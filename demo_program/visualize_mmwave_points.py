@@ -1,4 +1,4 @@
-from mmwave_demo.capture import main
+from mmwave_demo.visualize import main
 
 
 if __name__ == "__main__":

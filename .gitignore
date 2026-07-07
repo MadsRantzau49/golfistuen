@@ -92,3 +92,14 @@ lib64
 pip*
 python*
 pyserial*
+
+# mmWave generated captures/debug outputs
+demo_program/*.bin
+demo_program/*.csv
+demo_program/*.png
+demo_program/data/raw/*
+!demo_program/data/raw/.gitkeep
+demo_program/data/processed/*
+!demo_program/data/processed/.gitkeep
+demo_program/data/plots/*
+!demo_program/data/plots/.gitkeep
