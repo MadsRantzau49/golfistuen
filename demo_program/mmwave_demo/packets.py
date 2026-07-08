@@ -7,6 +7,8 @@ MAGIC_WORD = b"\x02\x01\x04\x03\x06\x05\x08\x07"
 # magicWord[4] uint16 + 8 uint32 fields = 40 bytes
 HEADER_STRUCT = struct.Struct("<4H8I")
 TLV_HEADER_STRUCT = struct.Struct("<II")
+POINT_STRUCT = struct.Struct("<ffff")
+SIDE_INFO_STRUCT = struct.Struct("<hh")
 
 
 TLV_NAMES = {
@@ -92,11 +94,10 @@ def parse_detected_points(tlv_payload: bytes):
     """
 
     points = []
-    point_struct = struct.Struct("<ffff")
-    count = len(tlv_payload) // point_struct.size
+    count = len(tlv_payload) // POINT_STRUCT.size
 
     for i in range(count):
-        x, y, z, doppler = point_struct.unpack_from(tlv_payload, i * point_struct.size)
+        x, y, z, doppler = POINT_STRUCT.unpack_from(tlv_payload, i * POINT_STRUCT.size)
         points.append({
             "x": x,
             "y": y,
@@ -105,6 +106,27 @@ def parse_detected_points(tlv_payload: bytes):
         })
 
     return points
+
+
+def parse_point_side_info(tlv_payload: bytes):
+    """
+    Parse TLV type 7 side info.
+
+    The SDK demo sends int16 snr and noise values in 0.1 dB units, one entry
+    per detected point.
+    """
+
+    side_info = []
+    count = len(tlv_payload) // SIDE_INFO_STRUCT.size
+
+    for i in range(count):
+        snr_raw, noise_raw = SIDE_INFO_STRUCT.unpack_from(tlv_payload, i * SIDE_INFO_STRUCT.size)
+        side_info.append({
+            "snr_db": snr_raw / 10.0,
+            "noise_db": noise_raw / 10.0,
+        })
+
+    return side_info
 
 
 def tlv_summary(tlvs):

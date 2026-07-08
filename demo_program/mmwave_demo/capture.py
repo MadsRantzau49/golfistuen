@@ -7,7 +7,7 @@ from pathlib import Path
 import serial
 
 from .config import send_config
-from .packets import HEADER_STRUCT, MAGIC_WORD, parse_detected_points, parse_packet, tlv_summary
+from .packets import HEADER_STRUCT, MAGIC_WORD, parse_detected_points, parse_packet, parse_point_side_info, tlv_summary
 
 
 DEFAULT_RAW_PATH = Path("data/raw/mmwave_raw_packets.bin")
@@ -33,6 +33,8 @@ POINT_FIELDS = [
     "y",
     "z",
     "doppler",
+    "snr_db",
+    "noise_db",
 ]
 
 
@@ -81,22 +83,29 @@ def write_frame_row(frame_writer, timestamp, parsed):
 
 
 def write_detected_points(point_writer, timestamp, parsed):
+    points = []
+    side_info = []
+
     for tlv in parsed["tlvs"]:
-        if tlv["type"] != 1:
-            continue
+        if tlv["type"] == 1:
+            points = parse_detected_points(tlv["payload"])
+        elif tlv["type"] == 7:
+            side_info = parse_point_side_info(tlv["payload"])
 
-        points = parse_detected_points(tlv["payload"])
+    for i, point in enumerate(points):
+        side = side_info[i] if i < len(side_info) else {}
 
-        for i, point in enumerate(points):
-            point_writer.writerow({
-                "timestamp": timestamp,
-                "frame_number": parsed["frame_number"],
-                "point_index": i,
-                "x": point["x"],
-                "y": point["y"],
-                "z": point["z"],
-                "doppler": point["doppler"],
-            })
+        point_writer.writerow({
+            "timestamp": timestamp,
+            "frame_number": parsed["frame_number"],
+            "point_index": i,
+            "x": point["x"],
+            "y": point["y"],
+            "z": point["z"],
+            "doppler": point["doppler"],
+            "snr_db": side.get("snr_db"),
+            "noise_db": side.get("noise_db"),
+        })
 
 
 def extract_next_packet(buffer: bytearray):

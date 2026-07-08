@@ -3,6 +3,13 @@ import math
 from pathlib import Path
 
 
+def optional_float(value):
+    if value in (None, ""):
+        return None
+
+    return float(value)
+
+
 def load_points(path: Path):
     points = []
 
@@ -19,6 +26,8 @@ def load_points(path: Path):
                     "y": float(row["y"]),
                     "z": float(row["z"]),
                     "doppler": float(row["doppler"]),
+                    "snr_db": optional_float(row.get("snr_db")),
+                    "noise_db": optional_float(row.get("noise_db")),
                 }
             except (KeyError, TypeError, ValueError):
                 continue
@@ -65,7 +74,7 @@ def filter_points(points, start_frame=None, end_frame=None, min_range=None, max_
 
 
 def numeric_range(points, field):
-    values = [point[field] for point in points]
+    values = [point[field] for point in points if point.get(field) is not None]
 
     if not values:
         return None, None

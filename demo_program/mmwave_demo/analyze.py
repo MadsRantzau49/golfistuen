@@ -43,6 +43,8 @@ def summarize(points):
     print(fmt_range("y", numeric_range(points, "y"), " m"))
     print(fmt_range("z", numeric_range(points, "z"), " m"))
     print(fmt_range("doppler", numeric_range(points, "doppler"), " m/s"))
+    print(fmt_range("snr", numeric_range(points, "snr_db"), " dB"))
+    print(fmt_range("noise", numeric_range(points, "noise_db"), " dB"))
 
     ranges = [point_range(point) for point in points]
     print(f"range: {min(ranges):.3f} m .. {max(ranges):.3f} m")
