@@ -51,6 +51,12 @@ def send_config(config_port: str, config_baud: int, config_file: Path):
             response = read_cli_response(ser, timeout=timeout)
             text = response.decode(errors="replace").strip()
 
+            if not response:
+                raise RuntimeError(
+                    "No response from radar command port. The mmWave demo firmware "
+                    "is probably wedged or the board needs reset/power-cycle."
+                )
+
             if text:
                 print(text)
 

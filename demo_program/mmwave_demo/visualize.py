@@ -338,11 +338,14 @@ def build_parser():
     parser.add_argument("--animate", action="store_true", help="Animate frames instead of plotting one frame")
     parser.add_argument("--save-animation", type=Path, help="Save an animated GIF. Works well in headless WSL.")
     parser.add_argument("--interval", type=int, default=100, help="Animation delay in milliseconds")
+    parser.add_argument("--frame-step", type=int, default=1, help="Use every Nth frame for animation/GIF export")
     parser.add_argument("--history", type=int, default=1, help="Number of frames to show at once")
     parser.add_argument("--start-frame", type=int)
     parser.add_argument("--end-frame", type=int)
     parser.add_argument("--min-range", type=float, help="Ignore points closer than this many meters")
     parser.add_argument("--max-range", type=float, help="Ignore points farther than this many meters")
+    parser.add_argument("--min-abs-doppler", type=float, help="Hide static/slow points below this absolute doppler")
+    parser.add_argument("--min-snr", type=float, help="Hide points below this SNR in dB, when SNR exists")
     parser.add_argument("--xlim", type=float, nargs=2, metavar=("MIN", "MAX"))
     parser.add_argument("--ylim", type=float, nargs=2, metavar=("MIN", "MAX"))
     parser.add_argument("--zlim", type=float, nargs=2, metavar=("MIN", "MAX"))
@@ -367,6 +370,9 @@ def main(argv=None):
     if args.history < 1:
         raise SystemExit("--history must be at least 1")
 
+    if args.frame_step < 1:
+        raise SystemExit("--frame-step must be at least 1")
+
     if args.save and (args.animate or args.save_animation):
         raise SystemExit("--save is only supported for static plots. Use --save-animation for animation.")
 
@@ -377,6 +383,8 @@ def main(argv=None):
         end_frame=args.end_frame,
         min_range=args.min_range,
         max_range=args.max_range,
+        min_abs_doppler=args.min_abs_doppler,
+        min_snr=args.min_snr,
     )
 
     if not points:
@@ -393,10 +401,11 @@ def main(argv=None):
     fig, axes = create_figure(args)
 
     if args.animate or args.save_animation:
+        animation_frames = frame_numbers[::args.frame_step]
         animation = FuncAnimation(
             fig,
             lambda frame_number: draw_frame(axes, frames, frame_numbers, frame_number, args, points),
-            frames=frame_numbers,
+            frames=animation_frames,
             interval=args.interval,
             repeat=True,
         )

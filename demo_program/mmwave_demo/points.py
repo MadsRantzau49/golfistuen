@@ -50,7 +50,15 @@ def point_range(point):
     return math.sqrt(point["x"] ** 2 + point["y"] ** 2 + point["z"] ** 2)
 
 
-def filter_points(points, start_frame=None, end_frame=None, min_range=None, max_range=None):
+def filter_points(
+    points,
+    start_frame=None,
+    end_frame=None,
+    min_range=None,
+    max_range=None,
+    min_abs_doppler=None,
+    min_snr=None,
+):
     filtered = []
 
     for point in points:
@@ -66,6 +74,12 @@ def filter_points(points, start_frame=None, end_frame=None, min_range=None, max_
             continue
 
         if max_range is not None and distance > max_range:
+            continue
+
+        if min_abs_doppler is not None and abs(point["doppler"]) < min_abs_doppler:
+            continue
+
+        if min_snr is not None and point.get("snr_db") is not None and point["snr_db"] < min_snr:
             continue
 
         filtered.append(point)

@@ -145,17 +145,12 @@ def extract_next_packet(buffer: bytearray):
 def capture(args):
     ensure_parent_dirs(args.out_bin, args.out_frames, args.out_points)
 
-    ser = serial.Serial(
-        port=args.data_port,
-        baudrate=args.baud,
-        timeout=0.1,
-    )
-
     buffer = bytearray()
     bytes_seen = 0
     packets_seen = 0
     last_status = time.monotonic()
-    started_at = time.monotonic()
+    started_at = None
+    ser = None
 
     print(f"Listening on {args.data_port} at {args.baud} baud")
     print(f"Writing raw packets to: {args.out_bin}")
@@ -167,7 +162,15 @@ def capture(args):
         if args.config_port:
             send_config(args.config_port, args.config_baud, args.config_file)
 
-        with args.out_bin.open("ab") as raw_file, \
+        ser = serial.Serial(
+            port=args.data_port,
+            baudrate=args.baud,
+            timeout=0.1,
+        )
+        ser.reset_input_buffer()
+        started_at = time.monotonic()
+
+        with args.out_bin.open("wb") as raw_file, \
              args.out_frames.open("w", newline="") as frames_file, \
              args.out_points.open("w", newline="") as points_file:
 
@@ -239,7 +242,8 @@ def capture(args):
         print("\nStopped by user")
 
     finally:
-        ser.close()
+        if ser:
+            ser.close()
         print(f"Captured {packets_seen} packets from {bytes_seen} serial bytes")
 
 

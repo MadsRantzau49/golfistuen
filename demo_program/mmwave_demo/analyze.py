@@ -14,6 +14,8 @@ def build_parser():
     parser.add_argument("--end-frame", type=int)
     parser.add_argument("--min-range", type=float)
     parser.add_argument("--max-range", type=float)
+    parser.add_argument("--min-abs-doppler", type=float, help="Ignore static/slow points below this absolute doppler")
+    parser.add_argument("--min-snr", type=float, help="Ignore points below this SNR in dB, when SNR exists")
 
     return parser
 
@@ -63,5 +65,7 @@ def main(argv=None):
         end_frame=args.end_frame,
         min_range=args.min_range,
         max_range=args.max_range,
+        min_abs_doppler=args.min_abs_doppler,
+        min_snr=args.min_snr,
     )
     summarize(points)
