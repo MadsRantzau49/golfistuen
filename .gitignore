@@ -103,3 +103,12 @@ demo_program/data/processed/*
 !demo_program/data/processed/.gitkeep
 demo_program/data/plots/*
 !demo_program/data/plots/.gitkeep
+
+# New local workbench captures (existing flat logs and analyzer fixtures are preserved)
+logs/sessions/
+
+# Downloaded TI installers and extracted installer files stay local.
+# Keep lightweight tools such as tools/start_radar_app.sh versioned.
+/tools/**/*.run
+/tools/**/*.bin
+/tools/**/*.zip
