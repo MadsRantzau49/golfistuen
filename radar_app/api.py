@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import fcntl
 import json
+import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -91,6 +92,9 @@ def create_app(root=ROOT, service_factory=None):
     app = FastAPI(title="Golfistuen local radar workbench", lifespan=lifespan, docs_url=None, redoc_url=None)
     app.state.store, app.state.radar = store, radar
     hosts = ["127.0.0.1", "localhost", "[::1]"]
+    lan_host = os.environ.get("RADAR_LAN_HOST", "").strip()
+    if lan_host:
+        hosts.append(lan_host)
     if service_factory is not None:
         hosts.append("testserver")  # Explicit in-process test apps only.
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=hosts)
@@ -135,6 +139,14 @@ def create_app(root=ROOT, service_factory=None):
     @app.get("/api/ports")
     def ports():
         return radar.ports()
+
+    @app.get("/api/usb-power")
+    def usb_power_status():
+        return radar.usb_power_status()
+
+    @app.post("/api/usb-power/{action}")
+    def usb_power(action: str):
+        return radar.usb_power(action)
 
     @app.post("/api/connect")
     def connect(body: Connect):

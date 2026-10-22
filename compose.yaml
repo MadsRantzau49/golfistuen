@@ -8,9 +8,63 @@ services:
       - "${RADAR_DATA_PORT:-/dev/ttyUSB1}:${RADAR_DATA_PORT:-/dev/ttyUSB1}"
     group_add:
       - "${RADAR_SERIAL_GID:-20}"
+    environment:
+      RADAR_LAN_HOST: "${RADAR_LAN_HOST:-}"
     ports:
-      - "127.0.0.1:8000:8000"
+      - "${RADAR_LAN_HOST:-127.0.0.1}:8000:8000"
     volumes:
       - ./configs:/app/configs
       - ./logs:/app/logs
     stop_grace_period: 30s
+  usb_power:
+    build:
+      context: .
+      dockerfile: Dockerfile.usb-power
+    profiles: ["pi5-usb-power"]
+    command: ["python", "-m", "radar_app.usb_power"]
+    user: "0:0"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    devices:
+      - /dev/bus/usb/002/001
+      - /dev/bus/usb/003/001
+      - /dev/bus/usb/004/001
+      - /dev/bus/usb/005/001
+    volumes:
+      - type: bind
+        source: /sys/bus/usb/devices/usb2/2-0:1.0/usb2-port1/disable
+        target: /sys/bus/usb/devices/usb2/2-0:1.0/usb2-port1/disable
+        bind:
+          create_host_path: false
+      - type: bind
+        source: /sys/bus/usb/devices/usb2/2-0:1.0/usb2-port2/disable
+        target: /sys/bus/usb/devices/usb2/2-0:1.0/usb2-port2/disable
+        bind:
+          create_host_path: false
+      - type: bind
+        source: /sys/bus/usb/devices/usb3/3-0:1.0/usb3-port1/disable
+        target: /sys/bus/usb/devices/usb3/3-0:1.0/usb3-port1/disable
+        bind:
+          create_host_path: false
+      - type: bind
+        source: /sys/bus/usb/devices/usb4/4-0:1.0/usb4-port1/disable
+        target: /sys/bus/usb/devices/usb4/4-0:1.0/usb4-port1/disable
+        bind:
+          create_host_path: false
+      - type: bind
+        source: /sys/bus/usb/devices/usb4/4-0:1.0/usb4-port2/disable
+        target: /sys/bus/usb/devices/usb4/4-0:1.0/usb4-port2/disable
+        bind:
+          create_host_path: false
+      - type: bind
+        source: /sys/bus/usb/devices/usb5/5-0:1.0/usb5-port1/disable
+        target: /sys/bus/usb/devices/usb5/5-0:1.0/usb5-port1/disable
+        bind:
+          create_host_path: false
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8765/status', timeout=3).read()"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3

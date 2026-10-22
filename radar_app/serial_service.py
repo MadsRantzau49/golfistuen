@@ -6,6 +6,7 @@ import threading
 import time
 from collections import deque
 
+import httpx
 import serial
 from serial.tools import list_ports
 
@@ -223,8 +224,8 @@ class RadarService:
                 raise ValueError(
                     "This CFG changes channelCfg, adcCfg or lowPower after the sensor has started. "
                     "TI SDK 3.6 halts the firmware when these settings change without a board reboot. "
-                    "Unplug the radar for five seconds, reconnect it, run "
-                    "'docker compose up -d --force-recreate --wait', then connect and apply the desired CFG first. "
+                    "Power-cycle the board with the radar power buttons (or unplug it until its LED goes out), "
+                    "then reconnect and apply the desired CFG. USB serial disconnect alone does not reset it. "
                     "No commands from this CFG were sent."
                 )
             with self.lock:
@@ -297,24 +298,58 @@ class RadarService:
 
     def disconnect(self, reason="Radar disconnected by user"):
         with self.operation:
-            self.stop_event.set()
-            with self.condition:
-                self.condition.notify_all()
-            for port in (self.command_port, self.data_port):
-                if port:
-                    try:
-                        port.close()
-                    except OSError:
-                        pass
-            for thread in self.threads:
-                if thread is not threading.current_thread():
-                    thread.join(timeout=2)
-            self.store.stop(reason)
-            with self.lock:
-                self.command_port = self.data_port = None
-                self.applied_text = self.applied_summary = None
-                self.state = "disconnected"
-            return self.status()
+            return self._disconnect(reason)
+
+    def _disconnect(self, reason):
+        self.stop_event.set()
+        with self.condition:
+            self.condition.notify_all()
+        for port in (self.command_port, self.data_port):
+            if port:
+                try:
+                    port.close()
+                except OSError:
+                    pass
+        for thread in self.threads:
+            if thread is not threading.current_thread():
+                thread.join(timeout=2)
+        self.store.stop(reason)
+        with self.lock:
+            self.command_port = self.data_port = None
+            self.applied_text = self.applied_summary = None
+            self.state = "disconnected"
+        return self.status()
+
+    @staticmethod
+    def _usb_request(action=None):
+        url = "http://usb_power:8765" + (f"/power/{action}" if action else "/status")
+        try:
+            response = httpx.post(url, timeout=40) if action else httpx.get(url, timeout=5)
+            response.raise_for_status()
+            return response.json()
+        except httpx.HTTPError as exc:
+            detail = exc.response.json().get("detail") if isinstance(exc, httpx.HTTPStatusError) else str(exc)
+            raise ValueError(f"USB power control failed: {detail}") from exc
+
+    def usb_power_status(self):
+        return self._usb_request()
+
+    def usb_power(self, action):
+        if action not in {"on", "off"}:
+            raise ValueError("Unknown USB power action.")
+        if not self.operation.acquire(blocking=False):
+            raise ValueError("Wait for the current radar operation to finish.")
+        try:
+            if action == "off":
+                if self.store.status():
+                    raise ValueError("Stop recording before switching USB power off.")
+                self._disconnect("USB power switched off")
+            result = self._usb_request(action)
+            if result["board_power_cycled"]:
+                self._started_open_configuration = None
+            return result
+        finally:
+            self.operation.release()
 
     def status(self):
         recording = self.store.status()

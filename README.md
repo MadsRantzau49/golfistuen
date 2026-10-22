@@ -4,21 +4,21 @@
 
 Everything lives in **`radar_app/`**: the web dashboard, live serial connection, CFG editing, exact-byte recording, saved sessions, replay, and analysis.
 
-The shared decoder and offline export code is in `radar_app/analyzer.py`, and the replay template is in `radar_app/static/viewer.html`. Docker Compose runs the complete application as one service.
+The shared decoder and offline export code is in `radar_app/analyzer.py`, and the replay template is in `radar_app/static/viewer.html`. Docker Compose runs the application and a small Raspberry Pi 5 USB-power helper.
 
 ## Start with Docker Compose
 
 Install Docker Engine and Docker Compose. The included `.env` already contains this machine's settings; no copying is needed. Ensure the host directories `configs/` and `logs/` exist and are writable by your user.
 
-Plug the radar into USB before starting. The main Compose file includes both USB ports and their access permissions.
+Plug the radar into USB before starting. The main Compose file includes both USB ports and their access permissions. This Pi's `.env` enables the `pi5-usb-power` Compose profile for the USB-power helper; disable that profile on other machines unless they have the same USB root-hub device paths.
 
-`RADAR_UID=1000` and `RADAR_GID=1000` make Docker save files as your Linux user. `RADAR_SERIAL_GID=20` gives the container access to the USB ports through the Linux `dialout` group. These are permission IDs, not passwords. They only need adjusting if you move the project to a machine with different user or device-group IDs.
+`RADAR_UID=1000` and `RADAR_GID=1003` make Docker save files as your Linux user on this machine. `RADAR_SERIAL_GID=20` gives the container access to the USB ports through the Linux `dialout` group. These are permission IDs, not passwords. They only need adjusting if you move the project to a machine with different user or device-group IDs.
 
 ```bash
 docker compose up --build -d --wait
 ```
 
-Open **http://127.0.0.1:8000**. Docker installs the Python dependencies and starts one backend worker. The dashboard supports live radar, configuration editing, and saved-recording analysis. Select the command and data ports and click **Connect**. Startup does not connect to or configure the radar.
+Open **http://127.0.0.1:8000** on the Pi or **http://192.168.50.100:8000** from another device on the LAN. `RADAR_LAN_HOST` in `.env` sets the Pi address accepted by the app and published by Docker; update it if the Pi's address changes. Docker installs the Python dependencies and starts one backend worker. The dashboard supports live radar, configuration editing, and saved-recording analysis. Select the command and data ports and click **Connect**. Startup does not connect to or configure the radar.
 
 `configs/` and `logs/` are bind-mounted, so edited configurations, imports, and recorded sessions survive container replacement. Put DAT/CFG pairs directly in `logs/` to import them using **Saved sessions**. The optional real-data demo requires `radar_app/example_input/recording.dat` and `profile.cfg`, which are not included in this checkout; use your own paired recording for replay.
 
@@ -49,7 +49,9 @@ Restarting Docker or reconnecting the UARTs resets the application connection. `
 
 TI SDK 3.6 latches `channelCfg`, `adcCfg`, and `lowPower` on the first sensor start. Changing them later can halt the firmware. In the installed SDK, `mss/mmw_cli.c:288` is the assertion for a changed channel configuration. The dashboard rejects known changes before sending commands, including after a UART disconnect/reconnect.
 
-To change these settings, unplug the USB-powered board for five seconds, reconnect it, run `docker compose up -d --force-recreate --wait`, then connect in the dashboard and apply the desired CFG first. If the board has external power, it must also be power-cycled. This is required when moving between `default.cfg` (TX mask 5) and `fast_ball.cfg` (TX mask 7).
+To change these settings on this Pi 5, stop recording, then click **Radar power off** in the dashboard. Verify that its LED goes out. Click **Radar power on** (the app waits five seconds before restoring power), reconnect the two UARTs and apply the desired CFG first. The app clears its latched-configuration guard only after a completed off/on cycle. Alternatively, unplug the radar's USB cable until its LED goes out, wait five seconds, reconnect it and run `docker compose up -d --force-recreate --wait`. This is required when moving between `default.cfg` (TX mask 5) and `fast_ball.cfg` (TX mask 7).
+
+**Pi 5 USB power:** toggling only the USB2 hubs made the CP2105 UARTs disappear but left the radar LED blinking. The verified power-cycle sequence on this Pi uses `uhubctl -e -l HUB -a off` for hubs **5, 4, 3, 2** in that order, and the same order with `-a on`. The helper does exactly this; it considers the board reset only when *all* hub ports were off before restoring them. All four USB-A sockets lose power, so do not use USB storage on them while cycling the radar. The helper only has access to these root hubs and has no port published on the LAN. If Docker was stopped while power was off and cannot start because `/dev/ttyUSB*` are missing, start just the helper with `docker compose up -d usb_power`, restore power with `docker compose exec usb_power python -c "import urllib.request; urllib.request.urlopen(urllib.request.Request('http://127.0.0.1:8765/power/on', method='POST')).read()"`, then run `docker compose up -d --wait`.
 
 Hardware troubleshooting on this board found a separate issue: a baseline with three transmitters streamed successfully, but changing only chirp idle time from 567 µs to 7 µs caused the entire USB device to disconnect. `fast_ball.cfg` also failed from a fresh power cycle. Its short-idle settings are therefore not hardware-verified; power delivery is a suspect, not a confirmed cause. `default.cfg` is the verified baseline. Selecting a different CFG in the browser does not change the active settings until **Apply** is clicked.
 
