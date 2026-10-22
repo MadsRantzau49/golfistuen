@@ -43,6 +43,9 @@ class RadarService:
         self.connection = {}
         self.applied_text = None
         self.applied_summary = None
+        # TI latches these settings at the first sensorStart until board reboot.
+        # Closing/reopening UARTs does not reset that firmware state.
+        self._started_open_configuration = None
         self.console = deque(maxlen=800)
         self.console_seq = 0
         self.recent = deque(maxlen=500)
@@ -215,9 +218,15 @@ class RadarService:
                 raise ValueError("Stop recording before changing radar configuration. The recording must retain one immutable CFG.")
             if self.command_port is None or self.stop_event.is_set():
                 raise ValueError("Connect both UARTs before applying a CFG.")
-            previous = self.applied_summary
-            if previous and previous["open_configuration"] != summary["open_configuration"]:
-                self.log("Open configuration changed. A physical board reset may be required; flushCfg does not reset hardware.")
+            open_configuration = tuple(sorted(summary["open_configuration"]))
+            if self._started_open_configuration is not None and self._started_open_configuration != open_configuration:
+                raise ValueError(
+                    "This CFG changes channelCfg, adcCfg or lowPower after the sensor has started. "
+                    "TI SDK 3.6 halts the firmware when these settings change without a board reboot. "
+                    "Unplug the radar for five seconds, reconnect it, run "
+                    "'docker compose up -d --force-recreate --wait', then connect and apply the desired CFG first. "
+                    "No commands from this CFG were sent."
+                )
             with self.lock:
                 self.state = "applying configuration"
                 self.applied_text = self.applied_summary = None
@@ -227,6 +236,8 @@ class RadarService:
                     with self.lock:
                         self.progress = dict(current=i + 1, total=len(rows), command=command)
                     self._send(command)
+                    if command.split()[0] == "sensorStart":
+                        self._started_open_configuration = open_configuration
                 with self.lock:
                     self.applied_text, self.applied_summary = text, summary
                     self.state = "measuring" if rows[-1].split()[0] == "sensorStart" else "configured"
@@ -257,6 +268,8 @@ class RadarService:
                 raise ValueError("Apply a CFG successfully on this connection first.")
             try:
                 self._send("sensorStart 0" if start else "sensorStop")
+                if start:
+                    self._started_open_configuration = tuple(sorted(self.applied_summary["open_configuration"]))
                 self.state = "measuring" if start else ("configured" if self.applied_text else "connected/state unknown")
                 self.fault = None
             except Exception as exc:

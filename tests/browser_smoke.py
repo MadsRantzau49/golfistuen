@@ -29,8 +29,8 @@ def main():
             service.ports = lambda: [dict(device="sim-command", description="Simulated command UART", serial_number="test"), dict(device="sim-data", description="Simulated data UART", serial_number="test")]
             return service
         app = create_app(root, factory)
-        cfg = (ROOT / 'radar_analyzer/example_input/profile.cfg').read_text()
-        data = (ROOT / 'radar_analyzer/example_input/recording.dat').read_bytes()
+        cfg = (ROOT / 'radar_app/example_input/profile.cfg').read_text()
+        data = (ROOT / 'radar_app/example_input/recording.dat').read_bytes()
         (root / 'configs/test.cfg').write_text(cfg)
         (root / 'logs/source.dat').write_bytes(data)
         (root / 'logs/matching.cfg').write_text(cfg)

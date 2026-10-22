@@ -125,7 +125,7 @@ def create_app(root=ROOT, service_factory=None):
 
     @app.get("/viewer", response_class=HTMLResponse)
     def viewer():
-        template = (ROOT / "radar_analyzer" / "viewer.html").read_text()
+        template = (STATIC / "viewer.html").read_text()
         return template.replace("</body>", '<script src="/static/viewer-extension.js"></script></body>')
 
     @app.get("/api/status")
@@ -201,8 +201,8 @@ def create_app(root=ROOT, service_factory=None):
 
     @app.get("/api/demo")
     def demo():
-        from radar_analyzer.analyze import analyze
-        directory = ROOT / "radar_analyzer" / "example_input"
+        from .analyzer import analyze
+        directory = Path(__file__).with_name("example_input")
         return analyze((directory / "recording.dat").read_bytes(), (directory / "profile.cfg").read_text(), "DEMO: existing recording.dat", "example_input/profile.cfg")
 
     @app.post("/api/demo/analysis")

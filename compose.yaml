@@ -1,0 +1,16 @@
+services:
+  radar:
+    build: .
+    init: true
+    user: "${RADAR_UID:-1000}:${RADAR_GID:-1000}"
+    devices:
+      - "${RADAR_COMMAND_PORT:-/dev/ttyUSB0}:${RADAR_COMMAND_PORT:-/dev/ttyUSB0}"
+      - "${RADAR_DATA_PORT:-/dev/ttyUSB1}:${RADAR_DATA_PORT:-/dev/ttyUSB1}"
+    group_add:
+      - "${RADAR_SERIAL_GID:-20}"
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - ./configs:/app/configs
+      - ./logs:/app/logs
+    stop_grace_period: 30s

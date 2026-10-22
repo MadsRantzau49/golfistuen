@@ -4,7 +4,7 @@ from __future__ import annotations
 import struct
 from collections import Counter, deque
 
-from radar_analyzer.analyze import MAGIC, MAX_PACKET, decode_stream
+from .analyzer import MAGIC, MAX_PACKET, decode_stream
 
 
 class StreamDecoder:

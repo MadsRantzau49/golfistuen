@@ -63,6 +63,7 @@ htmlcov/
 # Local environment/secrets
 .env
 .env.*
+!/.env
 !.env.example
 !.env.sample
 
@@ -108,7 +109,12 @@ demo_program/data/plots/*
 logs/sessions/
 
 # Downloaded TI installers and extracted installer files stay local.
-# Keep lightweight tools such as tools/start_radar_app.sh versioned.
+# Keep lightweight project tools versioned.
 /tools/**/*.run
 /tools/**/*.bin
 /tools/**/*.zip
+
+# Local golf captures and frontend dependencies/build output
+/logs/golf_sessions/
+node_modules/
+/golf_game/frontend/dist/

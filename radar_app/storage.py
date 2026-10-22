@@ -11,7 +11,7 @@ import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 
-from radar_analyzer.analyze import analyze
+from .analyzer import analyze
 from .configuration import digest, validate
 from .decoding import StreamDecoder
 

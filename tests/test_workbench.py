@@ -15,7 +15,7 @@ from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
-from radar_analyzer.analyze import MAGIC, analyze
+from radar_app.analyzer import MAGIC, analyze
 from radar_app.analysis import inspect
 from radar_app.api import ROOT, create_app
 from radar_app.configuration import apply_commands, digest, validate
@@ -24,8 +24,8 @@ from radar_app.serial_service import CommandFailure, RadarService
 from radar_app.simulation import SimulatedTransport
 from radar_app.storage import SessionStore, safe_child
 
-CFG = (ROOT / "radar_analyzer/example_input/profile.cfg").read_text()
-DATA = (ROOT / "radar_analyzer/example_input/recording.dat").read_bytes()
+CFG = (ROOT / "radar_app/example_input/profile.cfg").read_text()
+DATA = (ROOT / "radar_app/example_input/recording.dat").read_bytes()
 
 
 def packet(number=1, points=(), side=(), reverse=False):

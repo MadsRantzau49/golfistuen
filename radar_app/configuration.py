@@ -5,7 +5,7 @@ import hashlib
 import math
 import re
 
-from radar_analyzer.analyze import parse_config
+from .analyzer import parse_config
 
 # SDK OOB configuration commands only; deliberately no arbitrary CLI endpoint.
 COMMANDS = set("sensorStop sensorStart flushCfg dfeDataOutputMode channelCfg adcCfg adcbufCfg profileCfg chirpCfg frameCfg lowPower guiMonitor cfarCfg multiObjBeamForming clutterRemoval calibDcRangeSig extendedMaxVelocity bpmCfg lvdsStreamCfg compRangeBiasAndRxChanPhase measureRangeBiasAndRxChanPhase CQRxSatMonitor CQSigImgMonitor analogMonitor aoaFovCfg cfarFovCfg calibData nearFieldCfg dcRangeSigCfg rxSatMonitor sigImgMonitor".split())
