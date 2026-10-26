@@ -118,3 +118,7 @@ logs/sessions/
 /logs/golf_sessions/
 node_modules/
 /golf_game/frontend/dist/
+
+# Godot editor/import cache and local exports
+/golf_game/.godot/
+/golf_game/exports/

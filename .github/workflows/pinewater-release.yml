@@ -1,0 +1,48 @@
+name: Pinewater native releases
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["pinewater-v*"]
+  pull_request:
+    paths: ["golf_game/**", "tools/*range.py", ".github/workflows/pinewater-release.yml"]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: linux
+          - os: windows-latest
+            target: windows
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Cache verified engine and templates
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/golfistuen
+            ~/.local/share/godot/export_templates
+            ~/AppData/Roaming/Godot/export_templates
+          key: pinewater-godot-4.5.1-${{ runner.os }}
+      - name: Check and export native release
+        run: python tools/build_range.py --target ${{ matrix.target }}
+      - name: Upload executable package and checksums
+        uses: actions/upload-artifact@v4
+        with:
+          name: Pinewater-${{ matrix.target }}
+          path: |
+            dist/pinewater/0.2.0/*.zip
+            dist/pinewater/0.2.0/manifest.json
+            dist/pinewater/0.2.0/SHA256SUMS.txt
+          if-no-files-found: error

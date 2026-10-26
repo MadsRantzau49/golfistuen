@@ -1,5 +1,41 @@
 # Golfistuen — local radar tools
 
+## Pinewater — native golf application
+
+**Pinewater** is a stylized alpine golf game with a loading screen, main menu,
+persistent settings, a playable driving range, and an integrated custom-hole
+builder. Paint surfaces, sculpt terrain, place trees/cup/tee, save designs and
+play them with configurable no-putting scoring. It runs independently of the
+radar backend, with built-in shot simulation.
+
+### Play
+
+Open the native application from a release package; no Python or Godot installation
+is required. Locally built applications are available at:
+
+- **Linux:** `dist/pinewater/0.2.0/Pinewater-linux/Pinewater`
+- **Windows:** `dist/pinewater/0.2.0/Pinewater-windows/Pinewater.exe`
+
+Choose **Enter the range** in the main menu. Press **Space** or click **Launch shot**.
+Use **1 / 2 / 3** for driver, iron, and wedge, **C** to change camera, **R** to reset,
+**P** to replay, **Escape** to pause, and **F11** for fullscreen.
+
+### Develop and build
+
+```bash
+python3 tools/run_range.py
+python3 tools/build_range.py --target linux windows
+```
+
+The developer launcher downloads a verified Godot 4.5.1 engine if needed. The
+release builder runs checks and creates native executable packages with embedded
+game assets, player instructions, licenses and checksums. No pip packages are needed.
+
+See [`golf_game/README.md`](golf_game/README.md) for architecture, the shot contract,
+checks, and future radar integration.
+See [`golf_game/docs/HOLE_STUDIO.md`](golf_game/docs/HOLE_STUDIO.md) for hole editing,
+custom-hole play and automatic green scoring.
+
 ## One radar application
 
 Everything lives in **`radar_app/`**: the web dashboard, live serial connection, CFG editing, exact-byte recording, saved sessions, replay, and analysis.

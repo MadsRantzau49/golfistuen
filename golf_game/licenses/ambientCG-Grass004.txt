@@ -1,0 +1,12 @@
+Grass 004 by ambientCG
+https://ambientcg.com/a/Grass004
+
+This asset is released under Creative Commons CC0 1.0 Universal.
+https://creativecommons.org/publicdomain/zero/1.0/
+https://creativecommons.org/publicdomain/zero/1.0/legalcode
+
+Source maps: Grass004_2K-JPG_Color.jpg, Grass004_2K-JPG_NormalGL.jpg
+Original archive: https://ambientcg.com/get?file=Grass004_2K-JPG.zip
+Tile size: 1.4 metres by 1.4 metres.
+
+Colour grading and rendering changes are made by Golfistuen.

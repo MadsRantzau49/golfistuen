@@ -1,0 +1,38 @@
+; Standalone client. The radar application is not required.
+config_version=5
+
+[application]
+config/name="Pinewater"
+config/version="0.2.0"
+run/main_scene="res://scenes/application.tscn"
+config/features=PackedStringArray("4.5", "Forward Plus")
+config/icon="res://assets/icon.svg"
+
+[autoload]
+GameSettings="*res://scripts/app/game_settings.gd"
+AudioDirector="*res://scripts/app/audio_director.gd"
+
+[display]
+window/size/viewport_width=1440
+window/size/viewport_height=900
+window/size/window_width_override=1440
+window/size/window_height_override=900
+window/size/min_width=1100
+window/size/min_height=720
+window/stretch/mode="canvas_items"
+
+[audio]
+driver/enable_input=false
+
+[rendering]
+renderer/rendering_method="forward_plus"
+renderer/rendering_method.mobile="gl_compatibility"
+textures/default_filters/use_nearest_mipmap_filter=false
+textures/default_filters/anisotropic_filtering_level=4
+environment/defaults/default_clear_color=Color(0.64, 0.77, 0.79, 1)
+anti_aliasing/quality/msaa_3d=2
+lights_and_shadows/directional_shadow/size=4096
+lights_and_shadows/directional_shadow/soft_shadow_filter_quality=2
+
+[physics]
+common/physics_ticks_per_second=120
