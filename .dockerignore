@@ -1,8 +1,8 @@
 # Only application code and initial configurations belong in the image.
 **
 !requirements.txt
-!radar_app/
-!radar_app/**
+!radar_app_python/
+!radar_app_python/**
 !configs/
 !configs/**
 **/__pycache__/
