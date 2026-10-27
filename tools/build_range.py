@@ -93,7 +93,7 @@ def checked(command: list[str], timeout=300) -> None:
         print(result.stdout, end="", flush=True)
         raise RuntimeError(f"Build/check failed: {' '.join(command)}")
     for line in result.stdout.splitlines():
-        if line.startswith(("PASS:", "PACKAGED APP PASS:", "PACKAGED HOLE PASS:", "Driver:", "7 Iron:", "Wedge:", "WARNING:")):
+        if line.startswith(("PASS:", "PACKAGED APP PASS:", "PACKAGED HOLE PASS:", "PACKAGED MATCH PASS:", "Driver:", "7 Iron:", "Wedge:", "WARNING:")):
             print(line, flush=True)
 
 
@@ -145,6 +145,8 @@ def main() -> int:
         checked(command + ["--script", "res://tests/hole_checks.gd"])
         checked(command + ["--script", "res://tests/hole_workspace_checks.gd"])
         checked(command + ["--script", "res://tests/hole_app_checks.gd"])
+        checked(command + ["--script", "res://tests/match_checks.gd"])
+        checked(command + ["--script", "res://tests/match_app_checks.gd"])
     install_templates(args.target)
     manifest = {"application": "Pinewater", "version": APP_VERSION, "engine": version, "artifacts": []}
     for target in args.target:
@@ -159,9 +161,11 @@ def main() -> int:
         if target == "linux" and platform.system() == "Linux":
             checked([str(executable), "--headless", "--", "--smoke-app"])
             checked([str(executable), "--headless", "--", "--smoke-holes"])
+            checked([str(executable), "--headless", "--", "--smoke-match"])
         if target == "windows" and platform.system() == "Windows":
             checked([str(executable), "--headless", "--", "--smoke-app"])
             checked([str(executable), "--headless", "--", "--smoke-holes"])
+            checked([str(executable), "--headless", "--", "--smoke-match"])
         archive = package(executable, target, args.output)
         manifest["artifacts"].append({"file": archive.name, "sha256": digest(archive), "bytes": archive.stat().st_size})
     (args.output / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")

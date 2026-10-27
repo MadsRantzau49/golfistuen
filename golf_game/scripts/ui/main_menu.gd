@@ -6,8 +6,11 @@ signal settings_requested
 signal quit_requested
 signal builder_requested
 signal holes_requested
+signal match_requested
+signal resume_requested
 
 var play_button: Button
+var resume_button:Button
 
 
 func _ready() -> void:
@@ -69,7 +72,7 @@ func _ready() -> void:
 
 
 func _build_modes() -> void:
-	var panel := AppStyle.panel(self,-374,-420,-54,-90)
+	var panel := AppStyle.panel(self,-414,-538,-54,-90)
 	panel.anchor_left=1
 	panel.anchor_right=1
 	panel.anchor_top=1
@@ -79,12 +82,16 @@ func _build_modes() -> void:
 	panel.add_child(column)
 	column.add_child(AppStyle.label("Y O U R  N E X T  E S C A P E",10,AppStyle.GOLD))
 	column.add_child(AppStyle.label("The Alpine Collection",23,AppStyle.CREAM,true))
-	var mode := AppStyle.button("01    Driving range                         ↗")
+	var local:=AppStyle.button("01    Play local golf · 1–6 players    ↗",true)
+	local.pressed.connect(func():match_requested.emit());column.add_child(local)
+	resume_button=AppStyle.button("Resume saved round    ↗")
+	resume_button.pressed.connect(func():resume_requested.emit());column.add_child(resume_button)
+	var mode := AppStyle.button("02    Driving range                         ↗")
 	mode.pressed.connect(func():play_requested.emit())
 	column.add_child(mode)
-	var holes:=AppStyle.button("02    My holes                               ↗")
+	var holes:=AppStyle.button("03    My holes                               ↗")
 	holes.pressed.connect(func():holes_requested.emit());column.add_child(holes)
-	var builder:=AppStyle.button("03    Hole builder                          ↗")
+	var builder:=AppStyle.button("04    Hole builder                          ↗")
 	builder.pressed.connect(func():builder_requested.emit());column.add_child(builder)
 	column.add_child(AppStyle.divider())
 	column.add_child(AppStyle.label("Pinewater · British Columbia\nBuild your own escape. No putting required.",13,Color("d1d9c6")))

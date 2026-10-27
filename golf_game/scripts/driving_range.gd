@@ -22,6 +22,7 @@ var replaying := false
 var preview_visible := false
 var preview_mesh: MeshInstance3D
 var aim_mesh: MeshInstance3D
+var course_map:ShotCourseMap
 
 
 func _ready() -> void:
@@ -45,6 +46,7 @@ func _ready() -> void:
 	source.input_rejected.connect(_on_input_rejected)
 	hud = RangeHUD.new()
 	add_child(hud)
+	course_map=ShotCourseMap.new();course_map.position=Vector2(36,140);hud.root.add_child(course_map)
 	hud.launch_requested.connect(source.fire)
 	hud.reset_requested.connect(reset_tee)
 	hud.replay_requested.connect(replay_last)
@@ -65,11 +67,13 @@ func _ready() -> void:
 	if staged_loading:
 		_finish_loading.call_deferred()
 	else:
+		course_map.configure_range(world.surface)
 		ready_for_play.emit.call_deferred()
 
 
 func _finish_loading() -> void:
 	await world.build_async()
+	course_map.configure_range(world.surface)
 	ready_for_play.emit()
 
 
@@ -90,6 +94,7 @@ func apply_preferences() -> void:
 		if not visual.show_trail: visual.trail.visible=false
 	if hud:
 		hud.refresh_units()
+	if course_map:course_map.refresh_units()
 
 
 func receive_shot(payload: Dictionary) -> bool:
@@ -119,6 +124,7 @@ func _start_shot(shot: GolfShot, is_replay: bool) -> void:
 	hud.set_busy(true)
 	AudioDirector.play_strike()
 	preview_mesh.visible = false
+	course_map.begin_shot(Vector2(AlpineRange.TEE.x,AlpineRange.TEE.z),0)
 	var spin_label := "no side spin" if is_zero_approx(shot.spin_rpm) else "%.0f rpm %s" % [absf(shot.spin_rpm), "R" if shot.spin_rpm > 0 else "L"]
 	hud.show_message("%s · %.1f m/s · %.1f° · %s" % ["Replay" if is_replay else "Shot detected", shot.speed_mps, shot.elevation_deg, spin_label])
 
@@ -133,6 +139,8 @@ func _physics_process(delta: float) -> void:
 	camera.ball_velocity = model.velocity
 	camera.landed = model.has_landed
 	hud.update_flight(model)
+	var map_point:=AlpineRange.TEE+model.position
+	course_map.set_ball(Vector2(map_point.x,map_point.z),not model.finished)
 	if model.finished:
 		active = false
 		visual.freeze_interpolation()
@@ -175,6 +183,7 @@ func reset_tee() -> void:
 	aim_mesh.visible=true
 	hud.set_busy(false)
 	hud.reset_metrics()
+	course_map.set_lie(Vector2(AlpineRange.TEE.x,AlpineRange.TEE.z),0)
 	_refresh_preview()
 	hud.show_message("Fresh ball. Clear mind.")
 

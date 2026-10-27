@@ -2,7 +2,7 @@
 
 **An alpine golf escape by Golfistuen.** A native desktop game with a staged loading
 screen, scenic main menu, saved settings, a driving range, and an integrated hole
-builder with playable custom holes. Radar is
+builder with playable custom holes, and **1–6 player local competitive golf**. Radar is
 optional: built-in practice controls generate the same launch events as a future
 backend connection.
 
@@ -34,6 +34,14 @@ See [`PLAYER_GUIDE.txt`](PLAYER_GUIDE.txt) for player-facing instructions.
 - **Loading:** real progress through resource loading and environment construction.
 - **Main menu:** animated scenery, mode selection, Settings, and Quit.
 - **Driving range:** standalone practice with simulated or external shot input.
+- **Local golf:** six-player score strip, independent balls/lies, honours and
+  farthest-away turn order, Maximum Score or ordinary gross stroke play, relief,
+  pickup/DNF, full scorecards, shared winners and automatic disk resume.
+- **Clubhouse:** reusable ordered courses, seeded 1–36-hole generation, colourful
+  animated square-headed golfers and optional local photo portraits.
+- **Course guide:** live overhead map with painted hazards/trees, aim line, shot
+  trail, player balls, distance rings, pin/front/back yardages and click-to-measure
+  lay-up points. Also includes the practice range's actual target layout.
 - **Hole builder / My holes:** paint and sculpt an empty rough plot, place a cup,
   tee and trees, save/export designs and play them with no-putting scoring.
 - **Settings:** fullscreen, three graphics presets, metres/yards, reduced camera
@@ -57,6 +65,30 @@ strokes by default**, configurable under **Settings → Simulator rules**. Scori
 and rules are separate from the terrain model, with gross-result history retained
 for future scoring policies. See [Hole Studio documentation](docs/HOLE_STUDIO.md)
 for controls, file format, penalties, architecture and limitations.
+
+### Play a local competition
+
+Choose **Play local golf**, add **1–6 players**, select colours/photos, and choose
+the first-tee order (agreed list order or drawn honours). Build a course from
+playable library favourites, or generate 1–36 holes with a reproducible seed and
+chosen cup size. Saved courses retain ordered **complete hole snapshots**.
+
+Default **Maximum Score** supports pickups at an announced cap. Ordinary stroke
+play has no cap and pickup records **DNF/unclassified**. After the initial tee
+strokes, farthest from the cup plays next. Subsequent honours use previous-hole
+gross scores, with stable ties. The top strip shows all scores; the scorecard
+handles hole transitions and shared wins.
+
+**Relief / drop** offers stroke-and-distance, lateral, back-on-line and bunker
+options, plus a separately labelled **fairway rescue +2 house rule**. Automatic
+green strokes, fairway rescue and simplified water handling are declared simulator
+policies; this is not a complete tournament-rules implementation.
+
+The active round is checkpointed before launch and after every scoring action.
+**Resume saved round** restores all players, layouts, lies and scores. Interrupted
+shots re-simulate from launch without being counted twice. Photos are cropped to
+256 × 256 local PNG files and never uploaded. See [Local golf](docs/LOCAL_GOLF.md)
+for the precise rules, storage and verification scope.
 
 ### Art and rendering
 
@@ -107,7 +139,7 @@ or `--rendering-method gl_compatibility`.
 | --- | --- |
 | Space | Launch a simulated shot |
 | 1 / 2 / 3 | Driver / iron / wedge |
-| R | Fresh ball; cancel an active shot |
+| R | Range: fresh ball; solo test: restart; competition: confirm pickup |
 | P | Replay without adding a history entry |
 | Escape | Pause / resume / back |
 | F11 | Fullscreen |
@@ -171,6 +203,7 @@ golf_game/
 │   ├── driving_range.gd             Shot/session lifecycle and composition
 │   ├── domain/                     Backend launch data, pure flight solver
 │   ├── holes/                      Editor, versioned hole data, play and scoring
+│   ├── match/                      Competitive domain, courses, roster, resume, characters and UI
 │   ├── input/                      Common shot source and standalone simulator
 │   ├── world/
 │   │   ├── alpine_range.gd          Staged environment composition
@@ -276,6 +309,14 @@ framing clear of the HUD, and prove that adding obstacles cannot change the came
 path. Other checks cover behind-the-tee alignment, mirrored side-spin curvature, smooth
 object-opacity transitions, material isolation, bounded trail geometry, exact trail
 head attachment, landing fade-out, and visible-surface contact.
+
+Match checks cover honours/ties, farthest-away order, OOB tee priority, caps,
+pickup/DNF, relief/bunker constraints, generated courses, portraits and disk
+persistence. Application integration exercises six-player setup, generated/saved
+courses, contact-timed swings, in-flight restart without duplicate scoring,
+pause/scorecard isolation, replay, relief confirmation, pickup, hole transitions
+and tied results. Native packages run `--smoke-match` as well as the range and
+hole-builder smoke tests.
 
 Render ordering is deliberate: ball interpolation at priority 0, camera at 10,
 camera-facing trail at 12, obstruction opacity at 15, and close turf at 20. New

@@ -51,6 +51,9 @@ dirty vertex/normal region; the stroke's final frame is synchronised immediately
 
 **My holes** includes a ready-to-play **Pinewater Meadow** sample. **Edit a copy**
 starts a user-owned copy. Saved designs have their own **Edit** and **Play** actions.
+**Play** opens local-round setup with that hole selected. **Test this hole** in
+the builder remains a quick solo authoring test. [Local golf](LOCAL_GOLF.md)
+describes multiplayer courses, honours, scoring, relief and saved-round resume.
 
 ## Play without putting
 
@@ -137,13 +140,14 @@ Terrain definitions contain no scene-node paths. Scoring contains no rendering o
 input logic. Global simulator defaults can be overridden by a document's optional
 `rules_overrides` dictionary. Metadata is preserved across import/export. This lets
 future handicap/net-scoring or course-rating policies consume recorded gross
-results without changing terrain editing or radar input. Handicap calculation and
-multi-hole course tournaments are not implemented in this version.
+results without changing terrain editing or radar input. Local multi-hole gross
+competitions are implemented in `scripts/match/`; handicap calculation is not.
 
 Schema 1 uses a 2 m, 121 × 241 height/surface grid, with elevations from −8 to +24 m.
 It is a heightfield, not an overhang/cave modeller. Trunk collision is supported;
-foliage is visual and fades when obstructing the camera. Penalty drops use the
-previous lie rather than full tournament-specific drop-area rules.
+foliage is visual and fades when obstructing the camera. Water/OOB use the
+previous lie rather than full tournament-specific penalty-area relief. Local
+competition additionally supports declared unplayable-ball and house-rule relief.
 
 ## Verification
 

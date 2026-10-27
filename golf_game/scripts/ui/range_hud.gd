@@ -8,6 +8,7 @@ signal replay_requested
 signal preview_changed(enabled: bool)
 signal menu_requested
 signal settings_requested
+signal relief_requested
 
 const THUMB := preload("res://assets/slider_thumb.svg")
 var root: Control
@@ -34,6 +35,8 @@ var shot_count := 0
 var history: Array[Dictionary]=[]
 var last_model: BallFlight
 var context_label := "ALPINE RANGE"
+var match_mode:=false
+var relief_button:Button
 
 
 func _ready() -> void:
@@ -55,18 +58,17 @@ func _process(delta: float) -> void:
 
 
 func _header() -> void:
-	var brand:=VBoxContainer.new()
-	root.add_child(brand)
-	brand.position=Vector2(42,30)
-	brand.add_child(AppStyle.label("Pinewater",30,AppStyle.CREAM,true))
-	brand.add_child(AppStyle.label(context_label+"   /   BRITISH COLUMBIA",9,AppStyle.GOLD))
+	if not match_mode:
+		var brand:=VBoxContainer.new();root.add_child(brand);brand.position=Vector2(42,30)
+		brand.add_child(AppStyle.label("Pinewater",30,AppStyle.CREAM,true))
+		brand.add_child(AppStyle.label(context_label+"   /   BRITISH COLUMBIA",9,AppStyle.GOLD))
 	var buttons:=HBoxContainer.new()
 	root.add_child(buttons)
 	buttons.anchor_left=1
 	buttons.anchor_right=1
 	buttons.offset_left=-300
 	buttons.offset_right=-36
-	buttons.offset_top=30
+	buttons.offset_top=151 if match_mode else 30
 	buttons.add_theme_constant_override("separation",10)
 	var settings:=AppStyle.button("Settings")
 	settings.size_flags_horizontal=Control.SIZE_EXPAND_FILL
@@ -88,7 +90,7 @@ func _header() -> void:
 
 
 func _studio() -> void:
-	var panel:=AppStyle.panel(root,-328,190,-36,0)
+	var panel:=AppStyle.panel(root,-328,208 if match_mode else 190,-36,0)
 	panel.anchor_left=1
 	panel.anchor_right=1
 	var column:=VBoxContainer.new()
@@ -96,7 +98,7 @@ func _studio() -> void:
 	panel.add_child(column)
 	var heading:=HBoxContainer.new()
 	column.add_child(heading)
-	var label:=AppStyle.label("PRACTICE, AT YOUR OWN PACE",9,AppStyle.GOLD)
+	var label:=AppStyle.label("LOCAL GOLF · SIMULATED INPUT" if match_mode else "PRACTICE, AT YOUR OWN PACE",9,AppStyle.GOLD)
 	label.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 	heading.add_child(label)
 	heading.add_child(AppStyle.label("↗",17,AppStyle.GOLD))
@@ -124,6 +126,7 @@ func _studio() -> void:
 	var shortcut:=AppStyle.label("SPACE TO LAUNCH  ·  SIMULATED INPUT",9,AppStyle.MUTED)
 	shortcut.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER
 	column.add_child(shortcut)
+	shortcut.visible=not match_mode
 	var actions:=HBoxContainer.new()
 	actions.add_theme_constant_override("separation",8)
 	column.add_child(actions)
@@ -144,11 +147,15 @@ func _studio() -> void:
 	guide.add_theme_font_size_override("font_size",12)
 	guide.toggled.connect(func(enabled:bool):preview_changed.emit(enabled))
 	column.add_child(guide)
+	if match_mode:
+		relief_button=AppStyle.button("Relief / drop…")
+		relief_button.pressed.connect(func():relief_requested.emit());column.add_child(relief_button)
 	column.add_child(AppStyle.divider())
 	history_box=VBoxContainer.new()
 	history_box.custom_minimum_size.y=54
 	history_box.add_theme_constant_override("separation",4)
 	column.add_child(history_box)
+	history_box.visible=not match_mode
 	_update_history()
 
 
@@ -269,6 +276,7 @@ func set_busy(busy:bool)->void:
 	launch_button.disabled=busy
 	launch_button.text="A little flight time…" if busy else "Launch shot     ↗"
 	replay_button.disabled=busy or shot_count==0
+	if relief_button:relief_button.disabled=busy
 	status_label.text="●  Ball in flight" if busy else "●  Ready to play"
 
 

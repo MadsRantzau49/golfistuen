@@ -36,6 +36,7 @@ func _run()->void:
 	app.range_scene.hud.spin_slider.value=900.0
 	app.range_scene.hud.request_launch()
 	check(app.range_scene.active,"Practice UI launches through the event interface")
+	check(app.range_scene.course_map.range_mode and app.range_scene.course_map.visible,"Practice includes a range-target distance guide")
 	check(app.range_scene.last_shot.spin_rpm==900.0,"Side-spin control reaches the actual launch payload")
 	app.pause_game()
 	var elapsed:float=app.range_scene.model.elapsed
@@ -51,6 +52,8 @@ func _run()->void:
 		app.range_scene._physics_process(BallFlight.STEP)
 		if not app.range_scene.active:break
 	check(app.range_scene.hud.shot_count==1,"Resumed shot finishes exactly once")
+	var resting_point:Vector3=AlpineRange.TEE+app.range_scene.model.position
+	check(app.range_scene.course_map.ball.distance_to(Vector2(resting_point.x,resting_point.z))<.001 and app.range_scene.course_map.trail.size()>1,"Range map tracks the real shot to its resting position")
 	var preferences:Node=root.get_node("GameSettings")
 	var old_quality:Variant=preferences.get_value("quality")
 	preferences.set_value("quality","Low",false)
@@ -59,6 +62,7 @@ func _run()->void:
 	var old_units:Variant=preferences.get_value("units")
 	preferences.set_value("units","Yards",false)
 	check(app.range_scene.hud.carry_label.text=="%.0f"%preferences.distance(app.range_scene.model.carry_m),"Unit preference updates displayed metrics")
+	check(app.range_scene.course_map._distance.text.contains("yd"),"Range target labels use the selected units")
 	preferences.set_value("units",old_units,false)
 	var old_trail:Variant=preferences.get_value("show_trail")
 	preferences.set_value("show_trail",false,false)
