@@ -9,6 +9,7 @@ signal library_requested
 signal menu_requested
 signal mode_changed(editing:bool)
 signal rules_requested
+signal setup_requested
 
 var save_root:="user://holes"
 var store:HoleStore
@@ -19,6 +20,8 @@ var editor:HoleEditor
 var play:HolePlay
 var editing:=true
 var interactive:=false
+var competition:MatchPlay
+var match_active:=false
 
 
 func _ready()->void:
@@ -56,7 +59,9 @@ func _prepare()->void:
 
 
 func open_editor(document:HoleDefinition=null)->void:
+	_close_match()
 	if document!=null and editor.hole!=document:editor.set_document(document)
+	if world.hole!=editor.hole:world.set_document(editor.hole);world.sync_now()
 	editing=true;world.set_editing(true)
 	backdrop.environment.fog_enabled=false # Plan view should read like a clear map.
 	backdrop.obstruction_fader.enabled=false
@@ -67,8 +72,10 @@ func open_editor(document:HoleDefinition=null)->void:
 
 func open_play(document:HoleDefinition)->void:
 	if not document.play_errors().is_empty():return
+	_close_match()
 	if editing:editor.save_draft()
 	if editor.hole!=document:editor.set_document(document)
+	if world.hole!=document:world.set_document(document)
 	world.sync_now();world.set_editing(false);editing=false
 	backdrop.environment.fog_enabled=true
 	editor.set_active(false);editor_camera.set_process(false)
@@ -81,10 +88,12 @@ func set_interactive(value:bool,_menu_camera:=false)->void:
 	if editor:editor.set_active(value and editing)
 	if editor_camera:editor_camera.set_process(value and editing)
 	if play:
-		play.set_active(value and not editing)
+		play.set_active(value and not editing and not match_active)
 		if not value:play.visual.locator.hide()
+	if competition:competition.set_active(value and match_active)
 	if value:
 		if editing:editor_camera.current=true
+		elif match_active:competition.camera.current=true
 		else:play.camera.current=true
 
 
@@ -93,6 +102,7 @@ func apply_preferences()->void:
 	backdrop.apply_quality(quality)
 	if world and world.close_turf:world.close_turf.apply_quality(quality)
 	if play:play.apply_preferences()
+	if competition:competition.apply_preferences()
 	if editor:editor._refresh()
 
 
@@ -101,4 +111,25 @@ func save_draft()->void:
 
 
 func receive_shot(payload:Dictionary)->bool:
-	return play.receive_shot(payload) if not editing and interactive else false
+	if editing or not interactive:return false
+	return competition.receive_shot(payload) if match_active else play.receive_shot(payload)
+
+
+func open_match(competition_state:LocalGolfMatch,clubhouse:ClubhouseStore,pending:Dictionary={})->void:
+	if editing:editor.save_draft()
+	if competition==null:
+		competition=MatchPlay.new();competition.world=world;competition.backdrop=backdrop;competition.store=store;competition.clubhouse=clubhouse;add_child(competition)
+		competition.pause_requested.connect(func():pause_requested.emit())
+		competition.settings_requested.connect(func():settings_requested.emit())
+		competition.menu_requested.connect(func():menu_requested.emit())
+		competition.setup_requested.connect(func():setup_requested.emit())
+	editing=false;match_active=true;editor.set_active(false);editor_camera.set_process(false)
+	play.set_active(false);play.hide();play.visual.locator.hide()
+	backdrop.environment.fog_enabled=true
+	competition.show();competition.set_active(true);competition.start_match(competition_state,pending)
+	set_interactive(true);mode_changed.emit(false)
+
+
+func _close_match()->void:
+	match_active=false
+	if competition:competition.set_active(false);competition.hide();competition.visual.locator.hide()

@@ -129,7 +129,7 @@ def main() -> int:
     if result:
         return result
     if args.check:
-        for script in ("range_checks.gd", "application_checks.gd", "camera_checks.gd", "hole_checks.gd", "hole_workspace_checks.gd", "hole_app_checks.gd"):
+        for script in ("range_checks.gd", "application_checks.gd", "camera_checks.gd", "hole_checks.gd", "hole_workspace_checks.gd", "hole_app_checks.gd", "match_checks.gd", "match_app_checks.gd"):
             result = run(command + ["--headless", "--script", f"res://tests/{script}"], timeout=120)
             if result:
                 return result

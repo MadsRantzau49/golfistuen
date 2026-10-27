@@ -19,7 +19,7 @@ static func create(settings: Dictionary = {}, overrides: Dictionary = {}) -> Hol
 static func valid(key: String, value: Variant) -> bool:
 	if not (value is int or value is float) or not is_finite(float(value)) or value!=int(value): return false
 	if key in ["green_putts","water_penalty","oob_penalty"]: return value>=0 and value<=3
-	if key=="max_strokes": return value>=3 and value<=30
+	if key=="max_strokes": return value==0 or (value>=3 and value<=30)
 	return false
 
 

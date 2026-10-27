@@ -3,7 +3,7 @@ extends Node
 ## loading, preferences and transitions. The world is reused across menu and play.
 
 signal state_changed(state_name: String)
-enum State { LOADING, MENU, PLAYING, PAUSED, SETTINGS, EXITING, EDITING, HOLES }
+enum State { LOADING, MENU, PLAYING, PAUSED, SETTINGS, EXITING, EDITING, HOLES, MATCH_SETUP }
 var state := State.LOADING
 var previous_state := State.MENU
 var range_scene: Node3D
@@ -19,12 +19,15 @@ var library:HoleLibrary
 var active_mode:Node3D
 var resume_state:=State.PLAYING
 var workspace_save_root:="user://holes"
+var clubhouse:ClubhouseStore
+var match_setup:MatchSetup
 
 
 func _ready() -> void:
 	get_tree().auto_accept_quit=false
 	var args:=OS.get_cmdline_user_args()
-	if args.has("--smoke-holes") or args.has("--capture-builder") or args.has("--capture-hole"):
+	clubhouse=ClubhouseStore.new("user://qa-native-clubhouse" if args.has("--smoke-match") or args.has("--capture-match") or args.has("--capture-setup") else "user://clubhouse")
+	if args.has("--smoke-holes") or args.has("--capture-builder") or args.has("--capture-hole") or args.has("--smoke-match") or args.has("--capture-match") or args.has("--capture-setup"):
 		workspace_save_root="user://qa-native-holes"
 	ui_layer=CanvasLayer.new()
 	ui_layer.layer=50
@@ -81,6 +84,7 @@ func _world_ready() -> void:
 	if OS.get_cmdline_user_args().has("--smoke-holes"):
 		_run_hole_smoke.call_deferred()
 	if OS.get_cmdline_user_args().has("--builder"):open_builder()
+	if OS.get_cmdline_user_args().has("--smoke-match"):_run_match_smoke.call_deferred()
 	if OS.get_cmdline_user_args().has("--capture-app"):
 		_capture_requested.call_deferred()
 
@@ -94,6 +98,7 @@ func show_menu() -> void:
 	_close_settings()
 	_clear_pause()
 	_hide_library()
+	_hide_match_setup()
 	_hide_workspace()
 	range_scene.show();range_scene.process_mode=Node.PROCESS_MODE_INHERIT;active_mode=range_scene
 	_sync_active_environment()
@@ -107,7 +112,10 @@ func show_menu() -> void:
 		menu.quit_requested.connect(quit_application)
 		menu.builder_requested.connect(open_builder)
 		menu.holes_requested.connect(show_holes)
+		menu.match_requested.connect(open_match_setup)
+		menu.resume_requested.connect(resume_match)
 	menu.show()
+	menu.resume_button.visible=clubhouse.has_active()
 	menu.play_button.grab_focus()
 	_set_state(State.MENU)
 	_reveal()
@@ -119,6 +127,7 @@ func enter_range() -> void:
 	if menu: menu.hide()
 	_clear_pause()
 	_hide_library();_hide_workspace()
+	_hide_match_setup()
 	range_scene.show();range_scene.process_mode=Node.PROCESS_MODE_INHERIT;active_mode=range_scene
 	_sync_active_environment()
 	range_scene.camera.current=true
@@ -237,6 +246,9 @@ func _unhandled_key_input(event: InputEvent) -> void:
 				State.PAUSED: _resume_active()
 				State.SETTINGS: close_settings()
 				State.HOLES: show_menu()
+				State.MATCH_SETUP:
+					if match_setup and match_setup.step==1:match_setup.step=0;match_setup._show_step()
+					else:show_menu()
 			get_viewport().set_input_as_handled()
 
 
@@ -277,6 +289,24 @@ func _capture_requested()->void:
 	if args.has("--capture-builder"):
 		await open_builder(HoleDefinition.new() if args.has("--blank") else HoleDefinition.demo())
 	if args.has("--capture-hole"):await play_hole(HoleDefinition.demo())
+	if args.has("--capture-setup"):
+		open_match_setup()
+		while match_setup.players.size()<6:match_setup._add_player()
+		if args.has("--course-step"):match_setup.step=1;match_setup._show_step()
+	if args.has("--capture-match"):
+		var roster:Array[GolfPlayer]=[]
+		for player_index in range(6):roster.append(GolfPlayer.new("Player %d"%(player_index+1),player_index))
+		await start_match(LocalGolfMatch.new(roster,GolfCourse.single(HoleDefinition.demo())))
+		if args.has("--capture-map-flight"):
+			var controller:=workspace.competition
+			controller.source.fire(58,0,19);controller._process(.44)
+			for frame in range(250):controller._physics_process(BallFlight.STEP);controller._process(BallFlight.STEP)
+			controller.set_physics_process(false);controller.set_process(false);controller.visual.freeze_interpolation()
+		if args.has("--measure-map"):
+			workspace.competition.course_map.measured_point=workspace.competition.hole.tee.lerp(workspace.competition.hole.cup,.55)
+			workspace.competition.course_map.refresh_units()
+		if args.has("--capture-relief"):workspace.competition._open_relief()
+		if args.has("--capture-scorecard"):workspace.competition._show_completion()
 	if args.has("--capture-flight"):
 		enter_range()
 		range_scene.source.fire(58,0,19)
@@ -320,6 +350,7 @@ func _resume_active()->void:
 
 
 func show_holes()->void:
+	_hide_match_setup()
 	_close_settings();_clear_pause();_hide_workspace();_hide_library()
 	if menu:menu.hide()
 	range_scene.show();range_scene.process_mode=Node.PROCESS_MODE_INHERIT;range_scene.set_interactive(false,true)
@@ -349,6 +380,7 @@ func _ensure_workspace()->bool:
 	workspace.rules_requested.connect(func():open_settings(1))
 	workspace.library_requested.connect(show_holes)
 	workspace.menu_requested.connect(show_menu)
+	workspace.setup_requested.connect(open_match_setup)
 	workspace.mode_changed.connect(func(editing:bool):
 		active_mode=workspace
 		_sync_active_environment()
@@ -362,6 +394,7 @@ func _ensure_workspace()->bool:
 
 
 func _activate_workspace()->void:
+	_hide_match_setup()
 	_close_settings();_clear_pause();_hide_library()
 	if menu:menu.hide()
 	range_scene.set_interactive(false,false);range_scene.hide();range_scene.process_mode=Node.PROCESS_MODE_DISABLED
@@ -401,7 +434,53 @@ func _edit_saved_hole(id:String)->void:
 
 func _play_saved_hole(id:String)->void:
 	var document:=HoleDefinition.demo() if id=="@demo" else (workspace.store if workspace else HoleStore.new()).load_hole(id)
-	play_hole(document)
+	if document:open_match_setup(document)
+
+
+func _hide_match_setup()->void:
+	if is_instance_valid(match_setup):match_setup.hide();match_setup.queue_free()
+	match_setup=null
+
+
+func open_match_setup(selected:HoleDefinition=null)->void:
+	_close_settings();_clear_pause();_hide_library();_hide_workspace();_hide_match_setup()
+	if menu:menu.hide()
+	range_scene.show();range_scene.process_mode=Node.PROCESS_MODE_INHERIT;range_scene.set_interactive(false,true);range_scene.camera.current=true;active_mode=range_scene;_sync_active_environment()
+	match_setup=MatchSetup.new();match_setup.store=clubhouse;match_setup.hole_store=workspace.store if workspace else HoleStore.new(workspace_save_root);match_setup.selected_hole=selected
+	ui_layer.add_child(match_setup);match_setup.back_requested.connect(show_menu);match_setup.start_requested.connect(start_match)
+	_set_state(State.MATCH_SETUP);_reveal()
+
+
+func start_match(competition:LocalGolfMatch,pending:Dictionary={})->void:
+	if not await _ensure_workspace():return
+	_activate_workspace();workspace.open_match(competition,clubhouse,pending)
+	_set_state(State.PLAYING);_reveal()
+
+
+func resume_match()->void:
+	var saved:=clubhouse.load_active()
+	if saved.is_empty():menu.resume_button.text="Saved round unavailable";menu.resume_button.disabled=true;return
+	await start_match(saved.match,saved.pending)
+
+
+func _run_match_smoke()->void:
+	var roster:Array[GolfPlayer]=[]
+	for index in range(6):roster.append(GolfPlayer.new("Player %d"%(index+1),index))
+	await start_match(LocalGolfMatch.new(roster,GolfCourse.single(HoleDefinition.demo())))
+	var controller:=workspace.competition
+	for index in range(6):
+		controller.source.fire(0,0,0,0);controller._process(.44)
+		for frame in range(5000):
+			controller._physics_process(BallFlight.STEP)
+			if not controller.in_motion:break
+		controller._process(1.1)
+	if controller.match_state.attempts.any(func(round_state:HoleRound)->bool:return round_state.strokes!=1):await quit_application(1);return
+	var saved:=clubhouse.load_active()
+	if saved.is_empty():await quit_application(1);return
+	await start_match(saved.match,saved.pending)
+	pause_game();_resume_active();show_menu()
+	print("PACKAGED MATCH PASS: six players → tee turns → independent scores → disk save/resume → pause → menu")
+	await quit_application()
 
 
 func _run_hole_smoke()->void:

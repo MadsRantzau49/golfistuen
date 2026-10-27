@@ -7,7 +7,73 @@ Pinewater.exe (Windows), or Pinewater.app (macOS).
 No Python, Godot editor, radar backend or internet connection is needed to play.
 
 Choose "Enter the range" for practice, "Hole builder" to create a hole, or
-"My holes" to play a saved design or the included Pinewater Meadow sample.
+"Play local golf" for a competitive round. "My holes" opens saved designs and the
+included Pinewater Meadow sample; Play takes your selection into round setup.
+
+LOCAL GOLF · ONE TO SIX PLAYERS
+Choose names and colours, then choose a course. Click a face to preview that
+player's animated square-headed golfer. Photo imports accept local PNG/JPEG/WebP
+images, centre-crop them to a square, and save a small local copy; nothing uploads.
+The colour button swaps colours so the players remain distinct. List order is
+the agreed first-tee order, or choose Draw first-tee honours to randomise it.
+
+Add your favourite playable holes to the course, reorder them with the arrows,
+or remove them with ×. Favourites can repeat. Save course keeps the complete
+ordered layouts, including cup sizes, even if the source holes are later edited.
+Alternatively, generate 1–36 original holes using a chosen seed and cup diameter.
+Choose a saved course next time to replay the same layouts.
+
+The six-player score strip stays above the playing view. The highlighted player
+is up. Each player has an independent ball, lie and score. After everyone takes
+their first tee stroke, the farthest ball from the cup plays next. Water/OOB
+re-tees wait until the other players have taken their initial tee strokes.
+Lowest gross score on the previous hole has honours on the next tee; ties retain
+the previous tee order. A scorecard appears when everyone finishes the hole.
+Click Scorecard or a player score at any time to see the full round. Equal final
+totals share the win. Live strip totals include current-hole strokes; to-par
+figures and scorecard totals cover completed holes (* marks provisional strokes).
+
+Maximum Score is the default: announce double par, par + 5, or 12 strokes per
+hole before the round. Give up hole (also R) asks for confirmation and records
+that maximum. Ordinary stroke play has no cap: giving up records DNF and makes
+that player's round unclassified. A pickup never becomes an artificially low score.
+
+RELIEF / DROP
+When the ball is obstructed, choose Relief / drop:
+  Stroke and distance: previous stroke position, +1 penalty.
+  Lateral: within two virtual club-lengths (2.4 m), no nearer the cup, +1.
+  Back on line: behind the ball on the cup-to-ball line, +1.
+  Outside a bunker, back on line: +2. One-stroke bunker relief stays in that bunker.
+  Fairway rescue: a painted fairway point, no nearer the cup, +2. This is an
+    optional SIMULATOR HOUSE RULE, announced in setup, not free standard relief.
+Click the map to select a point, use the wheel to zoom, and right-drag to pan.
+White marks the old lie; green marks a valid selected drop. Trees are shown too.
+Take relief applies the penalty and retains the selected player's turn. Invalid
+drops cannot be confirmed. Water/OOB already use the shot plus one penalty and
+return to the previous safe lie; selectable penalty-area drop options are not used.
+
+No putting: green +0–3 additional strokes is announced in setup (default +2).
+A directly holed shot adds none. These are simulator gross-score competitions:
+there are no handicaps, match-play concessions, putting or full tournament rulings.
+Round rules stay fixed even if general settings change during play.
+
+COURSE GUIDE · DISTANCES AT A GLANCE
+The left-side map shows the actual course from above before and during a shot:
+fairway, green, water, bunkers, trees, OOB, tee, pin and the other players' balls.
+Distance rings start at the current shot lie. The dashed gold line shows aim;
+the moving marker and gold trail show the actual shot. Pin distance updates live.
+Front/back distances estimate the cup green's edges on the 2 m course grid.
+Hover or click a lay-up point to see distance out and remaining distance to pin.
+Right-click clears the measurement; measuring does not change aim or take a shot.
+Distances follow Settings > metres/yards. Use − / + to collapse or expand the map.
+The driving range has the same guide, with its actual 50–300 m target positions.
+All map distances are horizontal plan distances, not slope-adjusted club advice.
+
+Rounds save automatically at shot start, after each result/drop/pickup, and on hole
+transitions. Resume saved round restores the course, players, scores and turn.
+An interrupted in-flight shot re-simulates from launch without counting it again.
+Only one active round is retained; starting another replaces it. Completed
+scorecards are archived locally. Replay never changes scores or turn order.
 
 HOLE BUILDER
 New designs start as an empty rough plot with the same alpine backdrop.
@@ -62,7 +128,7 @@ use the same side-spin model as the live shot.
 
 Space       Launch a shot
 1 / 2 / 3   Driver / iron / wedge
-R           Fresh ball / cancel current shot
+R           Range: fresh ball; solo test: restart; competition: confirm pickup
 P           Replay the last shot
 Escape      Pause / back
 F11         Fullscreen
@@ -93,6 +159,8 @@ APPLICATION DATA
 Preferences are saved in Godot's standard per-user application data directory,
 under Pinewater. They do not require write access to the installation folder.
 Practice-shot history lasts for the current application session.
+Hole designs are under holes/. Players, square portraits, favourite courses,
+the active-round checkpoint and completed-round archives are under clubhouse/.
 
 CREDITS
 Original procedural environments, shaders, artwork and synthesized audio.

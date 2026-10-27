@@ -34,6 +34,8 @@ var detail_label:Label
 var aim_slider:HSlider
 var aim_value:Label
 var completion:Control
+var competitive:=false
+var course_map:ShotCourseMap
 
 
 func _ready()->void:
@@ -44,7 +46,7 @@ func _ready()->void:
 	camera=RangeCamera.new();add_child(camera);camera.ball_subject=visual.ball
 	camera.clearance=CameraClearance.new();camera.clearance.surface_height=world.surface.world_height
 	camera.framing_updated.connect(world.update_visibility);camera.framing_updated.connect(backdrop.update_camera_visibility)
-	hud=RangeHUD.new();hud.context_label="CUSTOM HOLE";add_child(hud)
+	hud=RangeHUD.new();hud.context_label="CUSTOM HOLE";hud.match_mode=competitive;add_child(hud)
 	hud.launch_requested.connect(source.fire)
 	hud.menu_requested.connect(func():pause_requested.emit());hud.settings_requested.connect(func():settings_requested.emit())
 	hud.reset_requested.connect(restart)
@@ -55,6 +57,8 @@ func _ready()->void:
 	for slider in [hud.speed_slider,hud.direction_slider,hud.elevation_slider,hud.spin_slider]:
 		slider.value_changed.connect(func(_value:float):_refresh_preview())
 	_build_score_ui()
+	course_map=ShotCourseMap.new();course_map.position=Vector2(36,336 if competitive else 230);hud.root.add_child(course_map)
+	hud.toast_label.offset_top=-157
 	preview_mesh=MeshInstance3D.new();preview_mesh.material_override=RangePalette.material(Color("e3dab2"),true);add_child(preview_mesh)
 	aim_mesh=MeshInstance3D.new();aim_mesh.material_override=RangePalette.material(AppStyle.GOLD,true);add_child(aim_mesh)
 	hud.visible=false
@@ -62,6 +66,7 @@ func _ready()->void:
 
 func start_hole(document:HoleDefinition)->void:
 	hole=document;in_motion=false;turn_delay=0;last_shot=null;replaying=false
+	course_map.configure_hole(hole)
 	visual.surface=world.surface;camera.clearance.surface_height=world.surface.world_height
 	attempt=HoleRound.new(hole,HoleRules.create(GameSettings.values,hole.rules_overrides))
 	if is_instance_valid(completion):completion.queue_free();completion=null
@@ -88,6 +93,7 @@ func apply_preferences()->void:
 	visual.show_trail=bool(GameSettings.get_value("show_trail"))
 	if not visual.show_trail:visual.trail.visible=false
 	hud.refresh_units();_refresh_score()
+	if course_map:course_map.refresh_units()
 
 
 func receive_shot(payload:Dictionary)->bool:
@@ -111,6 +117,7 @@ func _launch(shot:GolfShot,launch_origin:Vector3,yaw:float,is_replay:bool)->void
 	camera.begin_shot(origin+model.position,model.velocity)
 	hud.set_busy(true);aim_slider.editable=false;aim_mesh.visible=false;preview_mesh.visible=false
 	AudioDirector.play_strike();_refresh_score()
+	course_map.begin_shot(Vector2(origin.x,origin.z),yaw)
 
 
 func replay()->void:
@@ -155,6 +162,7 @@ func _place_lie()->void:
 	visual.position=origin;visual.reset();visual.tracking_enabled=true
 	var offset:=hole.cup-attempt.lie
 	aim_yaw=rad_to_deg(atan2(offset.x,-offset.y));aim_slider.set_value_no_signal(aim_yaw)
+	course_map.set_lie(attempt.lie,aim_yaw)
 	_update_aim(true)
 	hud.set_busy(attempt.state==HoleRound.State.COMPLETE)
 	if attempt.state==HoleRound.State.COMPLETE:hud.launch_button.text="Hole complete"
@@ -174,6 +182,7 @@ func _update_aim(snap:=false)->void:
 			var point:Vector3=value;point.y=world.surface.world_height(point)+.035;mesh.surface_add_vertex(point)
 	mesh.surface_end();aim_mesh.mesh=mesh;aim_mesh.visible=attempt.state==HoleRound.State.READY
 	_refresh_preview()
+	if course_map:course_map.aim_yaw=aim_yaw;course_map.refresh_units()
 
 
 func _refresh_preview()->void:
@@ -219,6 +228,7 @@ func _refresh_score()->void:
 		var world_point:=origin+model.position
 		position=Vector2(world_point.x,world_point.z)
 	var distance:=GameSettings.distance(position.distance_to(hole.cup))
+	course_map.set_ball(position,in_motion)
 	var stroke:=attempt.strokes+1 if attempt.state==HoleRound.State.READY else attempt.strokes
 	detail_label.text="Stroke %d  ·  %.0f %s to cup  ·  Green finish +%d  ·  Gross %d"%[stroke,distance,GameSettings.distance_suffix(),attempt.rules.options.green_putts,attempt.gross_score()]
 	if attempt.state==HoleRound.State.COMPLETE:
