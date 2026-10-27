@@ -8,7 +8,7 @@ use std::time::{Duration, Instant};
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let summary = analyze_recording("recording.dat")?;
     println!("{:?}", summary);
-    return Ok(());
+    // return Ok(());
     let config_text = std::fs::read_to_string("configs/golf.cfg")?;
 
     let commands = parse_config(&config_text);
