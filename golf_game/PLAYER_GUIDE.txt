@@ -27,6 +27,11 @@ library. Import/Export share hole JSON files. Your work is stored in per-user
 application data, outside the installation folder. A separate draft is retained
 when leaving the builder.
 
+Cup diameter is a map setting in the inspector (10.8–300 cm, default 30 cm).
+Choose a larger opening to compensate for simulator detection inaccuracies.
+The visible recessed hole and capture physics use the same size, and the ball
+drops inside when hit. Cup size is saved, exported and recorded with results.
+
 CUSTOM HOLES · NO PUTTING
 Use Aim at cup or the Aim slider, then launch a shot. Each next shot starts from
 the last resting lie. Green, fairway, rough and sand have different behaviour;
@@ -57,7 +62,6 @@ use the same side-spin model as the live shot.
 
 Space       Launch a shot
 1 / 2 / 3   Driver / iron / wedge
-C           Tee / follow-ball / bird's-eye camera
 R           Fresh ball / cancel current shot
 P           Replay the last shot
 Escape      Pause / back
@@ -67,10 +71,10 @@ The flight guide previews the actual flight model. Carry is the horizontal
 distance to first landing. Total includes the bounce and rollout. Replay does
 not add another shot to the session history.
 
-In Follow Ball view, the camera keeps the ball framed and eases into a closer
+The camera starts directly behind the tee/aiming line and always follows the ball,
+keeping it framed and easing into a closer
 view as it lands and rolls. Objects blocking the ball smoothly become transparent
-instead of pushing or rotating the camera. A subtle locator identifies distant balls in the
-tee or bird's-eye views. The rendered ball rests on the visible turf surface.
+instead of pushing or rotating the camera. The rendered ball rests on the visible turf surface.
 The soft flight trail follows the ball and quickly fades after landing.
 
 SETTINGS

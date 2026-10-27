@@ -20,6 +20,7 @@ func check(condition: bool, message: String) -> void:
 
 func _run() -> void:
 	root.size = Vector2i(1440, 900)
+	_check_address_alignment()
 	_check_camera_independence()
 	_check_transparency()
 	var packed := load("res://scenes/driving_range.tscn") as PackedScene
@@ -37,7 +38,6 @@ func _run() -> void:
 		{"speed":9.0,"direction":0.0,"elevation":0.0,"fps":60},
 		{"speed":42.0,"direction":0.0,"elevation":30.0,"fps":60,"spin":1800.0}]:
 		scene.reset_tee()
-		scene.camera.view = RangeCamera.View.FOLLOW
 		scene.source.fire(sample.speed, sample.direction, sample.elevation, sample.get("spin", 0.0))
 		var steps: int = 120 / int(sample.fps)
 		var dt := 1.0 / float(sample.fps)
@@ -84,7 +84,6 @@ func _check_camera_independence() -> void:
 	obstructed.clearance = CameraClearance.new()
 	obstructed.clearance.add_box(AABB(Vector3(-20,0,-100),Vector3(40,40,200)))
 	for camera in [clear, obstructed]:
-		camera.view = RangeCamera.View.FOLLOW
 		camera.begin_shot(Vector3(0,.1,0),Vector3(0,8,-30))
 	for frame in range(120):
 		var position := Vector3(0,5,-float(frame)*.4)
@@ -96,6 +95,22 @@ func _check_camera_independence() -> void:
 			"Adding a tree/prop cannot change the camera position")
 	clear.free()
 	obstructed.free()
+
+
+func _check_address_alignment()->void:
+	var camera:=RangeCamera.new();root.add_child(camera);camera.set_process(false)
+	for direction in [Vector3.FORWARD,Vector3.RIGHT,Vector3(.5,0,-.8).normalized()]:
+		var origin:=Vector3(10,.1,-40)
+		camera.set_launch_anchor(origin,direction)
+		var offset:=camera.global_position-origin
+		check(absf(offset.dot(direction.cross(Vector3.UP)))<.0001,"Address camera is directly behind the selected aiming line")
+		check(offset.dot(direction)<0,"Address camera starts behind, not in front of, the tee")
+		var ball:=camera.unproject_position(origin+Vector3.UP*BallFlight.BALL_RADIUS)
+		var forward:=camera.unproject_position(origin+direction*5)
+		check(absf(ball.x-forward.x)<.01,"A forward shot projects along one clear vertical target line")
+		camera.begin_shot(origin+Vector3.UP*BallFlight.BALL_RADIUS,direction*30)
+		check(camera.view_name()=="FOLLOW BALL","Every shot uses the follow rig")
+	camera.free()
 
 
 func _check_transparency() -> void:

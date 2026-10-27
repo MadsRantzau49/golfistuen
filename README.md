@@ -17,8 +17,9 @@ is required. Locally built applications are available at:
 - **Windows:** `dist/pinewater/0.2.0/Pinewater-windows/Pinewater.exe`
 
 Choose **Enter the range** in the main menu. Press **Space** or click **Launch shot**.
-Use **1 / 2 / 3** for driver, iron, and wedge, **C** to change camera, **R** to reset,
+Use **1 / 2 / 3** for driver, iron, and wedge, **R** to reset,
 **P** to replay, **Escape** to pause, and **F11** for fullscreen.
+The shot camera always follows from behind the aiming line.
 
 ### Develop and build
 

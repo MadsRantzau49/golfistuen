@@ -1,10 +1,9 @@
 class_name GolfShot
 extends RefCounted
-## The complete game-facing radar contract. Angles are relative to the target line.
+## Backend-owned launch data. The frontend does not validate physical ranges.
+## Angles are relative to the target line.
 ## Positive direction is right; positive elevation is up. All distances are metres.
 ## spin_rpm is signed vertical-axis SIDE spin: negative left, positive right.
-
-const MAX_SIDE_SPIN_RPM := 12000.0
 
 var shot_id: String
 var speed_mps: float
@@ -14,28 +13,22 @@ var spin_rpm := 0.0
 
 
 static func from_payload(payload: Dictionary) -> GolfShot:
-	if not payload.get("shot_id") is String or payload.shot_id.is_empty():
-		return null
-	for key in ["speed_mps", "direction_deg", "elevation_deg"]:
-		var value: Variant = payload.get(key)
-		if not (value is float or value is int) or not is_finite(float(value)):
-			return null
-	if not (payload.speed_mps >= 0.5 and payload.speed_mps <= 100.0):
-		return null
-	if abs(payload.direction_deg) > 85.0 or payload.elevation_deg < 0.0 or payload.elevation_deg > 85.0:
-		return null
-	var spin: Variant = payload.get("spin_rpm", 0.0)
-	if not (spin is float or spin is int) or not is_finite(float(spin)):
-		return null
-	if absf(float(spin)) > MAX_SIDE_SPIN_RPM:
-		return null
 	var shot := GolfShot.new()
-	shot.shot_id = payload.shot_id
-	shot.speed_mps = float(payload.speed_mps)
-	shot.direction_deg = float(payload.direction_deg)
-	shot.elevation_deg = float(payload.elevation_deg)
-	shot.spin_rpm = float(spin)
+	var id: Variant = payload.get("shot_id", payload.get("id"))
+	shot.shot_id = str(id) if id != null else ""
+	if shot.shot_id.is_empty(): shot.shot_id = "local-%d-%x" % [Time.get_ticks_usec(), randi()]
+	shot.speed_mps = _value(payload, ["speed_mps", "speed", "velocity"])
+	shot.direction_deg = _value(payload, ["direction_deg", "direction"])
+	shot.elevation_deg = _value(payload, ["elevation_deg", "elevation", "elavation"])
+	shot.spin_rpm = _value(payload, ["spin_rpm", "spin"])
 	return shot
+
+
+static func _value(payload: Dictionary, names: Array) -> float:
+	for name in names:
+		if payload.has(name) and payload[name] != null:
+			return float(payload[name])
+	return 0.0
 
 
 func velocity() -> Vector3:

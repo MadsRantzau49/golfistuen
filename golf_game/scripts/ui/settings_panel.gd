@@ -42,7 +42,6 @@ func _ready() -> void:
 	_choice(display,"Graphics quality","quality",["Low","Medium","High"])
 	_choice(display,"Distance units","units",["Metres","Yards"])
 	_toggle(display,"Reduced camera motion","reduced_motion")
-	_toggle(display,"Follow the ball automatically","auto_follow")
 	_toggle(display,"Show ball trail","show_trail")
 	var audio := VBoxContainer.new()
 	audio.size_flags_horizontal=Control.SIZE_EXPAND_FILL
@@ -52,7 +51,7 @@ func _ready() -> void:
 	_volume(audio,"Master volume","master_volume")
 	_volume(audio,"Nature ambience","ambience_volume")
 	_volume(audio,"Shot & interface sounds","effects_volume")
-	audio.add_child(AppStyle.label("CONTROLS\n\nSpace   Launch a practice shot\n1 / 2 / 3   Driver / iron / wedge\nC   Change camera\nR   Reset tee\nP   Replay\nEscape   Pause / back\nF11   Fullscreen",13,AppStyle.MUTED))
+	audio.add_child(AppStyle.label("CONTROLS\n\nSpace   Launch a practice shot\n1 / 2 / 3   Driver / iron / wedge\nCamera   Always follows the ball\nR   Reset tee\nP   Replay\nEscape   Pause / back\nF11   Fullscreen",13,AppStyle.MUTED))
 	var rules:=VBoxContainer.new();rules.name="Simulator rules";rules.add_theme_constant_override("separation",18);tabs.add_child(rules)
 	rules.add_child(AppStyle.label("NO PUTTING REQUIRED",11,AppStyle.GOLD))
 	var explanation:=AppStyle.label("When the ball stops on a green, the hole finishes with these additional strokes. A directly holed shot adds none. Rules are fixed for an attempt; restart the hole to apply changes.",15,AppStyle.MUTED)

@@ -7,7 +7,7 @@ signal save_failed(message: String)
 const PATH := "user://settings.cfg"
 const DEFAULTS := {"fullscreen": false, "quality": "High", "master_volume": .8,
 	"ambience_volume": .6, "effects_volume": .8, "units": "Metres",
-	"reduced_motion": false, "show_trail": true, "auto_follow": false,
+	"reduced_motion": false, "show_trail": true,
 	"green_putts":2,"water_penalty":1,"oob_penalty":1,"max_strokes":12}
 var values: Dictionary = DEFAULTS.duplicate()
 

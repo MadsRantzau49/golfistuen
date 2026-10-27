@@ -72,8 +72,11 @@ func _commit_metadata()->void:
 	if hole==null:return
 	var name_value:=hud.name_editor.text.strip_edges()
 	var par_value:=hud.par_option.selected+3
-	if name_value==hole.title and par_value==hole.par:return
-	history.begin(hole);hole.title=name_value;hole.par=par_value;history.commit(true)
+	var diameter:=clampf(snappedf(hud.cup_size.value/100.0,.001),HoleDefinition.MIN_CUP_DIAMETER,HoleDefinition.MAX_CUP_DIAMETER)
+	if name_value==hole.title and par_value==hole.par and is_equal_approx(diameter,hole.cup_diameter_m):return
+	history.begin(hole);hole.title=name_value;hole.par=par_value
+	if not is_equal_approx(diameter,hole.cup_diameter_m):hole.set_cup_diameter(diameter)
+	history.commit(true)
 	dirty=true;_refresh()
 
 
@@ -212,10 +215,13 @@ func _end_stroke()->void:
 func _draw_cursor(point:Vector2)->void:
 	var mesh:=ImmediateMesh.new();mesh.surface_begin(Mesh.PRIMITIVE_LINE_STRIP)
 	var radius:=hud.radius_slider.value
+	if tool=="cup":radius=hole.cup_radius()
+	elif tool=="tee":radius=1.0
+	elif tool=="tree":radius=2.5
 	for index in range(65):
 		var angle:=TAU*index/64.0
 		var p:=point+Vector2(cos(angle),sin(angle))*radius
-		var world_point:=Vector3(p.x,0,p.y);world_point.y=world.surface.world_height(world_point)+.035
+		var world_point:=Vector3(p.x,0,p.y);world_point.y=world.surface.rim_height_at(world_point)+.035
 		mesh.surface_add_vertex(world_point)
 	mesh.surface_end();_cursor.mesh=mesh
 

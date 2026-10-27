@@ -31,9 +31,6 @@ func _run() -> void:
 				range_scene._physics_process(BallFlight.STEP)
 				if not range_scene.active:
 					break
-	if args.has("--overview"):
-		range_scene.cycle_camera()
-		range_scene.cycle_camera()
 	if args.has("--preview"):
 		range_scene._set_preview(true)
 	await create_timer(0.5).timeout

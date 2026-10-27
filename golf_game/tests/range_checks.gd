@@ -94,16 +94,13 @@ func _check_contract() -> void:
 	var good := {"shot_id": "test", "speed_mps": 30.0,
 		"direction_deg": 0.0, "elevation_deg": 20.0}
 	check(GolfShot.from_payload(good).spin_rpm == 0.0, "Legacy payloads default to neutral spin")
-	for field in ["speed_mps", "direction_deg", "elevation_deg", "spin_rpm"]:
-		for bad_value in [NAN, INF, "30", null, true]:
-			var invalid := good.duplicate()
-			invalid[field] = bad_value
-			check(GolfShot.from_payload(invalid) == null, "Reject malformed field " + field)
-	for patch in [{"shot_id": ""}, {"shot_id": 2}, {"speed_mps": -1},
-		{"speed_mps": 101}, {"direction_deg": 90}, {"elevation_deg": -2}, {"spin_rpm": 12001}]:
-		var invalid := good.duplicate()
-		invalid.merge(patch, true)
-		check(GolfShot.from_payload(invalid) == null, "Reject invalid launch bounds")
+	var unrestricted:=GolfShot.from_payload({"speed_mps":4000.0,"direction_deg":180.0,"elevation_deg":-10.0,"spin_rpm":50000.0})
+	check(unrestricted.speed_mps==4000 and unrestricted.direction_deg==180 and unrestricted.elevation_deg== -10 and unrestricted.spin_rpm==50000,
+		"Backend values are accepted unchanged without frontend magnitude/angle/spin limits")
+	check(not unrestricted.shot_id.is_empty(),"Missing shot IDs are supplied locally")
+	check(GolfShot.from_payload({}).speed_mps==0.0,"Missing optional launch data does not reject the shot")
+	var simple:=GolfShot.from_payload({"speed":4,"direction":0,"elevation":15,"spin":200})
+	check(simple.speed_mps==4 and simple.elevation_deg==15 and simple.spin_rpm==200,"Simple backend field names are supported")
 	var shot := GolfShot.from_payload(good)
 	check(abs(shot.velocity().length() - 30.0) < 0.001, "Angles preserve launch speed")
 	check(is_zero_approx(shot.velocity().x) and shot.velocity().z < 0, "Straight shot follows Godot -Z")
@@ -138,7 +135,6 @@ func _check_side_spin() -> void:
 
 func _check_trail(scene: Node) -> void:
 	scene.reset_tee()
-	scene.camera.view = RangeCamera.View.FOLLOW
 	scene.source.fire(42, 0, 30, 1200)
 	for frame in range(180):
 		scene._physics_process(BallFlight.STEP)

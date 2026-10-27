@@ -14,6 +14,11 @@ const CELL_COUNT := COLUMNS * ROWS
 const MIN_HEIGHT := -8.0
 const MAX_HEIGHT := 24.0
 const MAX_TREES := 256
+const DEFAULT_CUP_DIAMETER := .30
+const MIN_CUP_DIAMETER := .108
+const MAX_CUP_DIAMETER := 3.0
+const CUP_DEPTH := .32
+const FLAGSTICK_RADIUS := .009
 const SURFACE_NAMES := ["Rough", "Fairway", "Green", "Water", "Bunker", "Out of bounds"]
 
 var id := ""
@@ -22,6 +27,7 @@ var par := 4
 var tee := Vector2(0, 20)
 var cup := Vector2(0, -300)
 var cup_placed := false
+var cup_diameter_m := DEFAULT_CUP_DIAMETER
 var water_level := -.25
 var seed := 6843
 var heights := PackedFloat32Array()
@@ -144,6 +150,19 @@ func place_cup(point: Vector2) -> void:
 		changed.emit("markers")
 
 
+func cup_radius() -> float:
+	return cup_diameter_m * .5
+
+
+func capture_radius() -> float:
+	return maxf(.001, cup_radius() - BallFlight.BALL_RADIUS)
+
+
+func set_cup_diameter(value: float) -> void:
+	cup_diameter_m = clampf(value, MIN_CUP_DIAMETER, MAX_CUP_DIAMETER)
+	changed.emit("markers")
+
+
 func add_tree(point: Vector2, species := "spruce") -> bool:
 	if not contains(point) or trees.size() >= MAX_TREES or surface_at(point) in [Surface.WATER,Surface.OOB]: return false
 	for tree in trees:
@@ -175,13 +194,14 @@ func play_errors() -> PackedStringArray:
 
 
 func snapshot() -> Dictionary:
-	return {"id":id,"title":title,"par":par,"tee":tee,"cup":cup,"cup_placed":cup_placed,
+	return {"id":id,"title":title,"par":par,"tee":tee,"cup":cup,"cup_placed":cup_placed,"cup_diameter_m":cup_diameter_m,
 		"water_level":water_level,"seed":seed,"heights":heights.duplicate(),"surfaces":surfaces.duplicate(),
 		"trees":trees.duplicate(true),"rules_overrides":rules_overrides.duplicate(true),"metadata":metadata.duplicate(true)}
 
 
 func restore(state: Dictionary) -> void:
 	id=state.id; title=state.title; par=state.par; tee=state.tee; cup=state.cup; cup_placed=state.cup_placed
+	cup_diameter_m=state.get("cup_diameter_m",DEFAULT_CUP_DIAMETER)
 	water_level=state.water_level; seed=state.seed; heights=state.heights.duplicate(); surfaces=state.surfaces.duplicate()
 	trees.assign(state.trees.duplicate(true)); rules_overrides=state.rules_overrides.duplicate(true); metadata=state.metadata.duplicate(true)
 	dirty_region=Rect2i(0,0,COLUMNS,ROWS)
@@ -191,7 +211,7 @@ func restore(state: Dictionary) -> void:
 func to_dict() -> Dictionary:
 	return {"schema_version":SCHEMA_VERSION,"id":id,"title":title,"par":par,"seed":seed,
 		"grid":{"columns":COLUMNS,"rows":ROWS,"spacing_m":CELL_SIZE},
-		"tee":[tee.x,tee.y],"cup":[cup.x,cup.y],"cup_placed":cup_placed,"water_level":water_level,
+		"tee":[tee.x,tee.y],"cup":[cup.x,cup.y],"cup_placed":cup_placed,"cup_diameter_m":cup_diameter_m,"water_level":water_level,
 		"heights":Array(heights),"surfaces":Array(surfaces),"trees":trees.duplicate(true),
 		"rules_overrides":rules_overrides.duplicate(true),"metadata":metadata.duplicate(true)}
 
@@ -212,6 +232,8 @@ static func from_dict(data: Dictionary) -> HoleDefinition:
 		if not point is Array or point.size()!=2 or not _number(point[0]) or not _number(point[1]): return null
 		if not BOUNDS.grow(.001).has_point(Vector2(point[0],point[1])): return null
 	if not data.get("cup_placed") is bool: return null
+	var diameter: Variant = data.get("cup_diameter_m",DEFAULT_CUP_DIAMETER)
+	if not _number(diameter) or diameter<MIN_CUP_DIAMETER or diameter>MAX_CUP_DIAMETER:return null
 	if not _number(data.get("water_level")) or data.water_level < -4 or data.water_level>4: return null
 	if not _number(data.get("seed",6843)) or absf(float(data.get("seed",6843)))>2147483647: return null
 	for key in ["heights","surfaces"]:
@@ -234,6 +256,7 @@ static func from_dict(data: Dictionary) -> HoleDefinition:
 	var hole := HoleDefinition.new()
 	hole.id=data.id; hole.title=data.title.strip_edges(); hole.par=int(data.par); hole.seed=int(data.get("seed",6843))
 	hole.tee=Vector2(data.tee[0],data.tee[1]); hole.cup=Vector2(data.cup[0],data.cup[1]); hole.cup_placed=data.cup_placed
+	hole.cup_diameter_m=float(diameter)
 	hole.water_level=float(data.water_level); hole.heights=PackedFloat32Array(data.heights); hole.surfaces=PackedByteArray(data.surfaces)
 	hole.trees.assign(raw_trees.duplicate(true)); hole.rules_overrides=data.get("rules_overrides",{}).duplicate(true)
 	hole.metadata=data.get("metadata",{}).duplicate(true)

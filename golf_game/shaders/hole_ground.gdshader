@@ -7,6 +7,7 @@ uniform sampler2D turf_normal : hint_normal, filter_linear_mipmap_anisotropic, r
 uniform bool editor_mode = true;
 uniform vec2 cup_position = vec2(0.0);
 uniform bool cup_placed = false;
+uniform float cup_radius = .15;
 varying vec3 world;
 varying vec3 terrain_normal;
 
@@ -48,7 +49,7 @@ void fragment() {
 	}
 	float boundary=(1.0-smoothstep(.0,.12,abs(oob-.5)))*.7;
 	color=mix(color,vec3(.8,.77,.64),boundary);
-	if(cup_placed && distance(world.xz,cup_position)<.055) discard;
+	if(cup_placed && distance(world.xz,cup_position)<cup_radius) discard;
 	ALBEDO=color;
 	ROUGHNESS=.94;
 	SPECULAR=.12;

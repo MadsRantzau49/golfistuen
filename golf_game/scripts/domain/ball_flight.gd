@@ -28,10 +28,12 @@ var ground_resistance := Callable()
 var ground_bounce := Callable()
 var launch_spin_rpm := 0.0
 var spin_rpm := 0.0
+var free_step_end := position
 
 
 func launch(shot: GolfShot, yaw_radians := 0.0) -> void:
 	position = Vector3(0.0, BALL_RADIUS, 0.0)
+	free_step_end=position
 	velocity = shot.velocity().rotated(Vector3.UP,yaw_radians)
 	launch_spin_rpm = shot.spin_rpm
 	spin_rpm = shot.spin_rpm
@@ -48,6 +50,7 @@ func step(dt: float = STEP) -> void:
 	if finished or phase == "READY":
 		return
 	elapsed += dt
+	free_step_end=position
 	if phase == "ROLLING":
 		spin_rpm *= exp(-dt * 6.0)
 		if elapsed >= 40.0:
@@ -64,6 +67,7 @@ func step(dt: float = STEP) -> void:
 		velocity += slope_force * dt
 		velocity = velocity.move_toward(Vector3.ZERO, resistance * dt)
 		position += velocity * dt
+		free_step_end=position
 		if position.y - surface_height(position) - BALL_RADIUS > .025:
 			phase = "BOUNCE" # Rolling off a raised tee/edge is a short fall, not a snap.
 			return
@@ -83,6 +87,7 @@ func step(dt: float = STEP) -> void:
 	var previous := position
 	velocity += acceleration * dt
 	position += velocity * dt
+	free_step_end=position
 	apex_m = maxf(apex_m, position.y - BALL_RADIUS)
 	var normal := surface_normal(position)
 	if position.y <= surface_height(position) + BALL_RADIUS and velocity.dot(normal) < 0.0:

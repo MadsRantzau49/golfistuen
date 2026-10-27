@@ -11,7 +11,11 @@ uniform float detail_visibility=0.0;
 uniform vec3 ball_position=vec3(0.0);
 uniform float ball_radius=.03;
 uniform bool ball_grounded=false;
+uniform vec2 cup_position=vec2(0.0);
+uniform float cup_radius=.15;
+uniform bool cup_placed=false;
 varying float tint;
+varying vec2 blade_world;
 float hash(vec2 p) { return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453); }
 float height_at(vec2 point) {
 	vec2 grid=(point-vec2(-120.0,-440.0))/2.0;
@@ -43,8 +47,10 @@ void vertex() {
 	if(ball_grounded) height*=1.0-(1.0-smoothstep(ball_radius*.6,ball_radius*2.5,distance(point,ball_position.xz)))*.65;
 	VERTEX.x+=sin(TIME*1.3+point.x*2.4+point.y*1.7)*.0012*UV.y*UV.y;
 	VERTEX.y=height+height_at(point)-root.y;
+	blade_world=(MODEL_MATRIX*vec4(VERTEX,1.0)).xz;
 }
 void fragment() {
+	if(cup_placed && distance(blade_world,cup_position)<cup_radius) discard;
 	vec3 leaf=mix(vec3(.23,.35,.14),vec3(.32,.44,.19),UV.y*.7+tint*.2);
 	ALBEDO=pow(leaf,vec3(2.2));
 	vec3 up=normalize((VIEW_MATRIX*vec4(0.0,1.0,0.0,0.0)).xyz);

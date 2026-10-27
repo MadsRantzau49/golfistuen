@@ -14,7 +14,6 @@ var lie := Vector2.ZERO
 var last_safe_lie := Vector2.ZERO
 var last_outcome := "Ready"
 var finish_reason := ""
-var accepted_ids: Dictionary = {}
 var shot_log: Array[Dictionary] = []
 
 
@@ -22,9 +21,8 @@ func _init(definition: HoleDefinition, configuration: HoleRules) -> void:
 	hole=definition; rules=configuration; lie=hole.tee; last_safe_lie=lie
 
 
-func begin_shot(id: String) -> bool:
-	if state!=State.READY or accepted_ids.has(id): return false
-	accepted_ids[id]=true
+func begin_shot(_id: String = "") -> bool:
+	if state!=State.READY:return false
 	strokes+=1
 	state=State.IN_FLIGHT
 	return true
@@ -42,7 +40,7 @@ func resolve_rest(point: Vector2) -> Dictionary:
 		state=State.READY
 	elif kind==HoleDefinition.Surface.GREEN:
 		lie=point
-		var holed := point.distance_to(hole.cup)<=.12
+		var holed := point.distance_to(hole.cup)<=hole.capture_radius()
 		awarded_putts=0 if holed else mini(int(rules.options.green_putts),maxi(0,int(rules.options.max_strokes)-strokes-penalties))
 		entry.awarded_putts=awarded_putts
 		last_outcome="Holed!" if holed else "Green reached · +%d automatic strokes"%awarded_putts
@@ -62,7 +60,7 @@ func gross_score() -> int:
 
 
 func result() -> Dictionary:
-	return {"schema_version":1,"hole_id":hole.id,"hole_name":hole.title,"par":hole.par,
+	return {"schema_version":1,"hole_id":hole.id,"hole_name":hole.title,"par":hole.par,"cup_diameter_m":hole.cup_diameter_m,
 		"strokes":strokes,"penalty_strokes":penalties,"automatic_putts":awarded_putts,
 		"gross_score":gross_score(),"relative_to_par":gross_score()-hole.par,
 		"complete":state==State.COMPLETE,"finish_reason":finish_reason,"rules":rules.to_dict(),"shots":shot_log.duplicate(true),"hole_metadata":hole.metadata.duplicate(true)}

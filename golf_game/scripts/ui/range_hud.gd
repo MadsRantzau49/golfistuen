@@ -5,7 +5,6 @@ extends CanvasLayer
 signal launch_requested(speed: float, direction: float, elevation: float, spin_rpm: float)
 signal reset_requested
 signal replay_requested
-signal camera_requested
 signal preview_changed(enabled: bool)
 signal menu_requested
 signal settings_requested
@@ -19,7 +18,7 @@ var spin_slider: HSlider
 var launch_button: Button
 var replay_button: Button
 var reset_button: Button
-var camera_button: Button
+var camera_label: Label
 var status_label: Label
 var distance_label: Label
 var carry_label: Label
@@ -210,7 +209,8 @@ func _metrics()->void:
 	carry_label=_metric(row,"CARRY","—",true)
 	apex_label=_metric(row,"APEX","—",true)
 	time_label=_metric(row,"TIME","—",false)
-	var controls:=HBoxContainer.new()
+	var controls:=PanelContainer.new()
+	controls.add_theme_stylebox_override("panel",AppStyle.box())
 	root.add_child(controls)
 	controls.anchor_left=1
 	controls.anchor_right=1
@@ -220,11 +220,11 @@ func _metrics()->void:
 	controls.offset_right=-36
 	controls.offset_top=-111
 	controls.offset_bottom=-61
-	camera_button=AppStyle.button("◉  TEE VIEW   ·   C")
-	camera_button.size_flags_horizontal=Control.SIZE_EXPAND_FILL
-	camera_button.pressed.connect(func():camera_requested.emit())
-	controls.add_child(camera_button)
-	var hint:=AppStyle.label("1 / 2 / 3  CLUBS       C  CAMERA       ESC  PAUSE",9,Color("e9e8d9ad"))
+	camera_label=AppStyle.label("FOLLOW BALL  ·  TARGET-LINE VIEW",11,AppStyle.GOLD)
+	camera_label.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	camera_label.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER
+	controls.add_child(camera_label)
+	var hint:=AppStyle.label("SPACE  LAUNCH       1 / 2 / 3  CLUBS       ESC  PAUSE",9,Color("e9e8d9ad"))
 	root.add_child(hint)
 	hint.anchor_top=1
 	hint.anchor_bottom=1
@@ -278,7 +278,7 @@ func update_flight(model:BallFlight)->void:
 	carry_label.text="%.0f"%GameSettings.distance(model.carry_m) if model.has_landed else "—"
 	apex_label.text="%.1f"%GameSettings.distance(model.apex_m)
 	time_label.text="%.1f"%model.elapsed
-	status_label.text={"FLIGHT":"●  Ball in flight","BOUNCE":"●  Nice landing","ROLLING":"●  Rolling out","REST":"●  Shot complete"}.get(model.phase,"●  Ready to play")
+	status_label.text={"FLIGHT":"●  Ball in flight","BOUNCE":"●  Nice landing","ROLLING":"●  Rolling out","REST":"●  Shot complete","HOLED":"●  Into the cup"}.get(model.phase,"●  Ready to play")
 
 
 func record_result(model:BallFlight,is_replay:bool)->void:

@@ -24,12 +24,18 @@ func has_grass(point:Vector3)->bool:
 
 
 func canopy_height(point:Vector3)->float:
+	if inside_cup(point):return 0.0
+	return _canopy_without_cup(point)
+
+
+func _canopy_without_cup(point:Vector3)->float:
 	var value:=kind(point)
 	if value in [HoleDefinition.Surface.SAND,HoleDefinition.Surface.WATER,HoleDefinition.Surface.OOB]: return 0.0
 	return lerpf(ROUGH_CANOPY,FAIRWAY_CANOPY,hole.short_grass_weight(Vector2(point.x,point.z)))
 
 
 func base_height(point:Vector3)->float:
+	if inside_cup(point):return cup_floor_height()
 	if not hole.contains(Vector2(point.x,point.z)): return landscape.rendered_height(point.x,point.z)
 	if kind(point)==HoleDefinition.Surface.WATER: return hole.water_level
 	return hole.height_at(Vector2(point.x,point.z))
@@ -37,6 +43,31 @@ func base_height(point:Vector3)->float:
 
 func world_height(point:Vector3)->float:
 	return base_height(point)+canopy_height(point)
+
+
+func inside_cup(point:Vector3)->bool:
+	return hole.cup_placed and Vector2(point.x,point.z).distance_to(hole.cup)<hole.capture_radius()
+
+
+func rim_height_at(point:Vector3)->float:
+	return hole.height_at(Vector2(point.x,point.z))+_canopy_without_cup(point)
+
+
+func cup_rim_height()->float:
+	return rim_height_at(Vector3(hole.cup.x,0,hole.cup.y))
+
+
+func cup_floor_height()->float:
+	return cup_rim_height()-HoleDefinition.CUP_DEPTH
+
+
+func visual_radius_limit(point:Vector3)->float:
+	if not hole.cup_placed:return .25
+	var distance:=Vector2(point.x,point.z).distance_to(hole.cup)
+	if distance>=hole.cup_radius():return .25
+	var wall_limit:=hole.cup_radius()-distance-.001
+	var pole_limit:=maxf(BallFlight.BALL_RADIUS,distance-HoleDefinition.FLAGSTICK_RADIUS-.0005)
+	return clampf(minf(wall_limit,pole_limit),BallFlight.BALL_RADIUS,.25)
 
 
 func height_from_origin(point:Vector3, origin:Vector3)->float:

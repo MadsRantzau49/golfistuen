@@ -18,6 +18,7 @@ signal rules_requested
 var root:Control
 var name_editor:LineEdit
 var par_option:OptionButton
+var cup_size:SpinBox
 var species_option:OptionButton
 var radius_slider:HSlider
 var strength_slider:HSlider
@@ -65,7 +66,7 @@ func _tools()->void:
 
 func _inspector()->void:
 	var panel:=AppStyle.panel(root,-318,126,-28,0);panel.anchor_left=1;panel.anchor_right=1
-	var column:=VBoxContainer.new();column.add_theme_constant_override("separation",10);panel.add_child(column)
+	var column:=VBoxContainer.new();column.add_theme_constant_override("separation",8);panel.add_child(column)
 	column.add_child(AppStyle.label("YOUR HOLE",10,AppStyle.GOLD))
 	name_editor=LineEdit.new();name_editor.max_length=80;name_editor.placeholder_text="Hole name";name_editor.custom_minimum_size.y=40
 	name_editor.add_theme_stylebox_override("normal",AppStyle.box(Color("263c30"),8,Color("ffffff20"),10))
@@ -77,6 +78,12 @@ func _inspector()->void:
 	par_option=OptionButton.new()
 	for value in [3,4,5,6]:par_option.add_item(str(value))
 	par_option.item_selected.connect(func(_index:int):metadata_changed.emit());row.add_child(par_option)
+	var size_row:=HBoxContainer.new();column.add_child(size_row)
+	var size_label:=AppStyle.label("Cup diameter",13);size_label.size_flags_horizontal=Control.SIZE_EXPAND_FILL;size_row.add_child(size_label)
+	cup_size=SpinBox.new();cup_size.min_value=HoleDefinition.MIN_CUP_DIAMETER*100;cup_size.max_value=HoleDefinition.MAX_CUP_DIAMETER*100
+	cup_size.step=.1;cup_size.suffix="cm";cup_size.value=HoleDefinition.DEFAULT_CUP_DIAMETER*100;cup_size.custom_minimum_size=Vector2(125,36)
+	cup_size.tooltip_text="Visible opening and capture diameter. Enlarge it to make simulator shots more forgiving. Saved with this hole."
+	cup_size.value_changed.connect(func(_value:float):metadata_changed.emit());size_row.add_child(cup_size)
 	column.add_child(AppStyle.divider())
 	radius_slider=_slider(column,"Brush radius",2,40,1,"m")
 	strength_slider=_slider(column,"Sculpt strength",.5,8,.5,"m/s")
@@ -114,6 +121,7 @@ func _footer()->void:
 func show_document(hole:HoleDefinition,dirty:bool)->void:
 	if not name_editor.has_focus(): name_editor.text=hole.title
 	par_option.select(hole.par-3)
+	if not cup_size.get_line_edit().has_focus():cup_size.set_value_no_signal(hole.cup_diameter_m*100)
 	var errors:=hole.play_errors()
 	validation.text="Ready to play · %.0f m · %d trees"%[hole.tee.distance_to(hole.cup),hole.trees.size()] if errors.is_empty() else "\n".join(errors)
 	validation.add_theme_color_override("font_color",AppStyle.MUTED if errors.is_empty() else AppStyle.GOLD)

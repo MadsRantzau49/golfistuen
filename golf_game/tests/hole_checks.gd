@@ -33,6 +33,11 @@ func _run()->void:
 	var serialized:Variant=JSON.parse_string(JSON.stringify(hole.to_dict()))
 	var copy:=HoleDefinition.from_dict(serialized)
 	check(copy!=null and copy.heights==hole.heights and copy.surfaces==hole.surfaces and copy.trees.size()==1,"Versioned JSON preserves terrain, paint and trees")
+	hole.set_cup_diameter(1.2)
+	check(HoleDefinition.from_dict(hole.to_dict()).cup_diameter_m==1.2,"Chosen cup diameter is saved with the map")
+	var legacy:=hole.to_dict();legacy.erase("cup_diameter_m")
+	check(HoleDefinition.from_dict(legacy).cup_diameter_m==HoleDefinition.DEFAULT_CUP_DIAMETER,"Old maps receive the default cup size")
+	_check_cup_capture()
 	var corrupt:Dictionary=hole.to_dict();corrupt.schema_version=99
 	check(HoleDefinition.from_dict(corrupt)==null,"Unknown schema is rejected")
 	corrupt=hole.to_dict();corrupt.heights[0]=NAN
@@ -68,6 +73,9 @@ func _check_scoring(hole:HoleDefinition)->void:
 	capped.begin_shot("cap");capped.resolve_rest(Vector2(14,-200))
 	check(capped.gross_score()==3,"Maximum gross score includes automatic green strokes")
 	check(not HoleRules.valid("green_putts",true) and not HoleRules.valid("green_putts",10),"Rule settings validate numeric bounds")
+	var metadata_only:=HoleRound.new(hole,rules)
+	metadata_only.begin_shot("backend-id");metadata_only.resolve_rest(Vector2(0,-20))
+	check(metadata_only.begin_shot("backend-id"),"Backend metadata is not a frontend shot-validity requirement")
 
 
 func _check_store(hole:HoleDefinition)->void:
@@ -85,3 +93,30 @@ func _check_store(hole:HoleDefinition)->void:
 	var dir:=DirAccess.open(directory)
 	for filename in dir.get_files():DirAccess.remove_absolute(directory.path_join(filename))
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(directory))
+
+
+func _cup_approach(surface:HoleSurface,offset:float)->HoleShotSimulator:
+	var shot:=GolfShot.from_payload({"speed_mps":8.0,"direction_deg":0.0,"elevation_deg":0.0})
+	var origin:=Vector3(offset,.018,-39.1)
+	var simulator:=HoleShotSimulator.new(shot,surface,origin,0)
+	simulator.model.phase="ROLLING"
+	return simulator
+
+
+func _check_cup_capture()->void:
+	var hole:=HoleDefinition.new();hole.apply_brush(Vector2(0,-40),20,"green");hole.place_cup(Vector2(0,-40))
+	var surface:=HoleSurface.new(AlpineLandscape.new(),hole)
+	hole.set_cup_diameter(.108)
+	var fast:=_cup_approach(surface,0)
+	fast.step(.2)
+	check(fast.sinking,"A swept fast entry hits the opening even when a physics tick crosses the whole cup")
+	for frame in range(60):fast.step()
+	check(fast.holed and fast.model.finished,"A captured ball visibly drops into the cup before the shot finishes")
+	check(absf((fast.origin+fast.model.position).y-surface.cup_floor_height()-BallFlight.BALL_RADIUS)<.0001,"Holed ball rests at the bottom of the actual cavity")
+	var narrow:=_cup_approach(surface,.35);narrow.step(.2)
+	check(not narrow.sinking,"A regulation opening does not capture a clearly off-centre shot")
+	hole.set_cup_diameter(1.0)
+	var wide:=_cup_approach(surface,.35);wide.step(.2)
+	check(wide.sinking,"Enlarging the saved opening genuinely increases capture forgiveness")
+	var high:=_cup_approach(surface,0);high.origin.y=1;high.model.phase="FLIGHT";high.step(.2)
+	check(not high.sinking,"A ball flying above the cup is not magnetically holed")

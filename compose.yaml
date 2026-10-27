@@ -21,7 +21,7 @@ services:
       context: .
       dockerfile: Dockerfile.usb-power
     profiles: ["pi5-usb-power"]
-    command: ["python", "-m", "radar_app.usb_power"]
+    command: ["python", "-m", "radar_app_python.usb_power"]
     user: "0:0"
     read_only: true
     cap_drop: [ALL]

@@ -38,6 +38,10 @@ func _run()->void:
 	root.push_input(release,true)
 	check(editor.hole.surface_at(Vector2(-50,-70))==HoleDefinition.Surface.FAIRWAY,"Actual viewport mouse input paints the terrain")
 	editor.hud.name_editor.text="Integration Meadow";editor._commit_metadata()
+	editor.hud.cup_size.value=100
+	check(editor.hole.cup_diameter_m==1.0,"Builder exposes per-map cup diameter")
+	editor.undo();check(editor.hole.cup_diameter_m==HoleDefinition.DEFAULT_CUP_DIAMETER,"Cup size participates in undo")
+	editor.redo();check(editor.hole.cup_diameter_m==1.0,"Cup size participates in redo")
 	editor.edit_once(Vector2(0,-80),"fairway",14)
 	editor.undo();check(editor.hole.surface_at(Vector2(0,-80))==HoleDefinition.Surface.ROUGH,"Editor undo restores paint")
 	editor.redo();check(editor.hole.surface_at(Vector2(0,-80))==HoleDefinition.Surface.FAIRWAY,"Editor redo restores paint")
@@ -47,12 +51,15 @@ func _run()->void:
 	editor.edit_once(Vector2(12,-45),"cup",2)
 	editor.edit_once(Vector2(44,-110),"tree",2)
 	workspace.world.sync_now()
+	check(is_equal_approx(workspace.world.material.get_shader_parameter("cup_radius"),.5),"Rendered terrain opening uses the saved diameter")
+	check(workspace.world.markers_root.has_node("CupLining") and workspace.world.markers_root.has_node("CupFloor"),"Cup has real side walls and a recessed bottom")
+	check(workspace.world.surface.world_height(Vector3(12,0,-45))<editor.hole.height_at(editor.hole.cup)-.2,"Physics ground contains the same recessed cup")
 	check(editor.hud.play_button.disabled==false,"Valid design enables Test hole")
 	var hit:Variant=workspace.world.pick_ray(Vector3(30,300,-100),Vector3.DOWN)
 	check(hit!=null and absf(hit.y-editor.hole.height_at(Vector2(30,-100)))<.02,"Editor cursor picks the sculpted terrain")
 	editor.save()
 	var loaded:HoleDefinition=workspace.store.load_hole(editor.hole.id)
-	check(loaded!=null and loaded.title=="Integration Meadow" and loaded.trees.size()==1,"Editor saves usable terrain and objects")
+	check(loaded!=null and loaded.title=="Integration Meadow" and loaded.trees.size()==1 and loaded.cup_diameter_m==1.0,"Editor saves terrain, objects and cup size")
 	loaded.rules_overrides={"green_putts":2}
 	workspace.open_play(loaded)
 	var play:Node3D=workspace.play

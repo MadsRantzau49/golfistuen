@@ -19,6 +19,9 @@ the driving range.
    For a recessed bunker, paint Sand and use Lower/Smooth to shape its depth and rim.
 4. Select **Tee** or **Cup**, then click to place it. The cup must be on a painted
    green, and at least 10 m from the tee, before the hole can be played.
+   Set **Cup diameter** in the inspector to choose forgiveness for this design:
+   10.8 cm (regulation) to 300 cm, default 30 cm. The diameter is stored with the
+   map, exported, and included in score records. Existing maps default to 30 cm.
 5. Place **Trees** (spruce or aspen), or remove them with **Erase trees**. Tree
    placement uses 2.5 m spacing and supports up to 256 trees per design.
 6. Set a name and par, then **Save hole**. It appears in **My holes**. **Test this
@@ -60,6 +63,13 @@ Each next shot starts at the previous ball's resting lie. The edited triangle
 surface drives flight contact, hills, valleys and rolling. Fairway, rough, green,
 and sand have different rolling resistance; sand also softens impact. Placed tree
 trunks can deflect shots. The camera retains the smooth follow/transparency system.
+It is the only shot camera and starts directly behind the selected aiming line.
+
+The cup is an actual recessed opening with lining, a bottom, a thin rim and a
+flagstick. Both terrain and grass are cut away at the chosen radius. Capture
+sweeps the ball's path across the same opening, allowing for the ball radius, so
+fast entries are not missed between ticks. There is no low-speed-only capture
+gate. An entering ball drops into the cavity; flying above it does not count.
 
 There is **no putting phase**. Once a ball comes to rest on a green:
 

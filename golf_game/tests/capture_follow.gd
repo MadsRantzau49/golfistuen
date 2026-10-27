@@ -16,7 +16,6 @@ func _run() -> void:
 	scene.set_physics_process(false)
 	scene.camera.set_process(false)
 	scene.visual.set_process(false)
-	scene.cycle_camera()
 	scene.hud.select_preset("7 Iron")
 	var spin := -1800.0 if args.has("--spin-left") else (1800.0 if args.has("--spin-right") else 0.0)
 	var direction := 25.0 if args.has("--wide") else 0.0

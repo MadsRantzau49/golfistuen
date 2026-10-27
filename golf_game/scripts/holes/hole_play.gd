@@ -47,7 +47,6 @@ func _ready()->void:
 	hud=RangeHUD.new();hud.context_label="CUSTOM HOLE";add_child(hud)
 	hud.launch_requested.connect(source.fire)
 	hud.menu_requested.connect(func():pause_requested.emit());hud.settings_requested.connect(func():settings_requested.emit())
-	hud.camera_requested.connect(_cycle_camera)
 	hud.reset_requested.connect(restart)
 	hud.reset_button.text="Restart hole"
 	hud.reset_button.tooltip_text="Start a fresh attempt from the tee."
@@ -67,9 +66,7 @@ func start_hole(document:HoleDefinition)->void:
 	attempt=HoleRound.new(hole,HoleRules.create(GameSettings.values,hole.rules_overrides))
 	if is_instance_valid(completion):completion.queue_free();completion=null
 	hud.history.clear();hud.shot_count=0;hud._update_history();hud.reset_metrics()
-	camera.view=RangeCamera.View.TEE;camera.menu_mode=false
-	camera.overview_position=Vector3(100,190,30)
-	camera.overview_target=Vector3(0,0,-180)
+	camera.menu_mode=false
 	_place_lie()
 	apply_preferences()
 
@@ -111,9 +108,7 @@ func _launch(shot:GolfShot,launch_origin:Vector3,yaw:float,is_replay:bool)->void
 	camera.set_launch_anchor(origin,aim,is_replay)
 	visual.position=origin;visual.reset();visual.tracking_enabled=true
 	in_motion=true
-	if bool(GameSettings.get_value("auto_follow")):camera.view=RangeCamera.View.FOLLOW
 	camera.begin_shot(origin+model.position,model.velocity)
-	hud.camera_button.text="◉  %s   ·   C"%camera.view_name()
 	hud.set_busy(true);aim_slider.editable=false;aim_mesh.visible=false;preview_mesh.visible=false
 	AudioDirector.play_strike();_refresh_score()
 
@@ -193,10 +188,6 @@ func _refresh_preview()->void:
 	mesh.surface_end();preview_mesh.mesh=mesh;preview_mesh.position=origin
 
 
-func _cycle_camera()->void:
-	camera.cycle_view();hud.camera_button.text="◉  %s   ·   C"%camera.view_name()
-
-
 func _build_score_ui()->void:
 	var panel:=AppStyle.panel(hud.root,365,25,-355,112);panel.anchor_right=1
 	var column:=VBoxContainer.new();panel.add_child(column)
@@ -263,7 +254,6 @@ func _input(event:InputEvent)->void:
 		KEY_1:hud.select_preset("Driver")
 		KEY_2:hud.select_preset("7 Iron")
 		KEY_3:hud.select_preset("Wedge")
-		KEY_C:_cycle_camera()
 		KEY_R:restart()
 		KEY_P:replay()
 		KEY_ESCAPE:pause_requested.emit()

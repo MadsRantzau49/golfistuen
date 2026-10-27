@@ -21,8 +21,7 @@ var active := false
 var replaying := false
 var preview_visible := false
 var preview_mesh: MeshInstance3D
-var accepted_ids: Dictionary = {}
-var accepted_order: Array[String] = []
+var aim_mesh: MeshInstance3D
 
 
 func _ready() -> void:
@@ -49,7 +48,6 @@ func _ready() -> void:
 	hud.launch_requested.connect(source.fire)
 	hud.reset_requested.connect(reset_tee)
 	hud.replay_requested.connect(replay_last)
-	hud.camera_requested.connect(cycle_camera)
 	hud.preview_changed.connect(_set_preview)
 	hud.menu_requested.connect(func():return_to_menu_requested.emit())
 	hud.settings_requested.connect(func():settings_requested.emit())
@@ -60,6 +58,7 @@ func _ready() -> void:
 	preview_mesh.material_override = RangePalette.material(Color("eaf1c6"), true)
 	preview_mesh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(preview_mesh)
+	_build_aim_line()
 	hud.visible=interactive
 	apply_preferences()
 	_handle_automation()
@@ -99,15 +98,9 @@ func receive_shot(payload: Dictionary) -> bool:
 
 
 func _on_shot(shot: GolfShot) -> void:
-	if accepted_ids.has(shot.shot_id):
-		return
 	if active:
 		hud.show_message("A ball is still in motion. Wait, or reset the tee.")
 		return
-	accepted_ids[shot.shot_id] = true
-	accepted_order.append(shot.shot_id)
-	if accepted_order.size() > 512:
-		accepted_ids.erase(accepted_order.pop_front())
 	last_shot = shot
 	_start_shot(shot, false)
 
@@ -120,11 +113,9 @@ func _start_shot(shot: GolfShot, is_replay: bool) -> void:
 	active = true
 	visual.tracking_enabled = interactive
 	replaying = is_replay
-	if bool(GameSettings.get_value("auto_follow")) and not camera.reduced_motion:
-		camera.view=RangeCamera.View.FOLLOW
-		hud.camera_button.text="◉  %s   ·   C"%camera.view_name()
 	camera.begin_shot(AlpineRange.TEE + model.position, model.velocity)
 	visual.reset()
+	aim_mesh.visible=false
 	hud.set_busy(true)
 	AudioDirector.play_strike()
 	preview_mesh.visible = false
@@ -164,8 +155,6 @@ func _input(event: InputEvent) -> void:
 			hud.select_preset("7 Iron")
 		KEY_3:
 			hud.select_preset("Wedge")
-		KEY_C:
-			cycle_camera()
 		KEY_R:
 			reset_tee()
 		KEY_P:
@@ -183,6 +172,7 @@ func reset_tee() -> void:
 	camera.reset_tracking()
 	visual.tracking_enabled = false
 	visual.reset()
+	aim_mesh.visible=true
 	hud.set_busy(false)
 	hud.reset_metrics()
 	_refresh_preview()
@@ -194,9 +184,17 @@ func replay_last() -> void:
 		_start_shot(last_shot, true)
 
 
-func cycle_camera() -> void:
-	camera.cycle_view()
-	hud.camera_button.text = "◉  %s   ·   C" % camera.view_name()
+func _build_aim_line() -> void:
+	aim_mesh=MeshInstance3D.new()
+	aim_mesh.material_override=RangePalette.material(Color("e6d6a5"),true)
+	aim_mesh.cast_shadow=GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var origin:=AlpineRange.TEE
+	var tip:=origin+Vector3.FORWARD*10
+	var mesh:=ImmediateMesh.new();mesh.surface_begin(Mesh.PRIMITIVE_LINES)
+	for segment in [[origin+Vector3.FORWARD,tip],[tip,origin+Vector3.FORWARD*8+Vector3.RIGHT*.65],[tip,origin+Vector3.FORWARD*8-Vector3.RIGHT*.65]]:
+		for value in segment:
+			var point:Vector3=value;point.y=world.surface.world_height(point)+.025;mesh.surface_add_vertex(point)
+	mesh.surface_end();aim_mesh.mesh=mesh;add_child(aim_mesh)
 
 
 func _on_input_rejected(reason: String) -> void:
@@ -238,6 +236,6 @@ func _handle_automation() -> void:
 				return
 			var payload: Variant = JSON.parse_string(file.get_as_text())
 			if not payload is Dictionary or not receive_shot(payload):
-				push_error("Shot file does not contain a valid launch payload.")
+				push_error("Shot file must contain a JSON object.")
 				get_tree().quit(1)
 				return

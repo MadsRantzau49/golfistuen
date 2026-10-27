@@ -63,3 +63,7 @@ func local_height(point: Vector3) -> float:
 
 func resistance(point: Vector3) -> float:
 	return 1.9 if is_fairway(point + LAUNCH_ORIGIN) else 4.2
+
+
+func visual_radius_limit(_point: Vector3) -> float:
+	return .25

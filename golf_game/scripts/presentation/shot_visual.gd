@@ -112,6 +112,7 @@ func present(fraction: float, delta: float) -> void:
 		_radius_initialized = true
 	else:
 		rendered_radius = lerpf(rendered_radius, desired_radius, 1.0 - exp(-delta * 8.0))
+	if surface:rendered_radius=minf(rendered_radius,surface.visual_radius_limit(world_point))
 	var displayed := Vector3(point.x, floor_y - global_position.y + altitude + rendered_radius, point.z)
 	var displacement := displayed - _last_presented
 	var horizontal := Vector3(displacement.x, 0, displacement.z)

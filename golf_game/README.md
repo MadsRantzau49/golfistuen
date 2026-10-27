@@ -37,7 +37,7 @@ See [`PLAYER_GUIDE.txt`](PLAYER_GUIDE.txt) for player-facing instructions.
 - **Hole builder / My holes:** paint and sculpt an empty rough plot, place a cup,
   tee and trees, save/export designs and play them with no-putting scoring.
 - **Settings:** fullscreen, three graphics presets, metres/yards, reduced camera
-  motion, automatic follow camera, trail visibility, and three volume controls.
+  motion, trail visibility, and three volume controls. Gameplay always follows the ball.
 - **Pause:** preserves an active shot and resumes it without advancing physics.
 - **Practice:** club presets, adjustable launch parameters, trajectory guide,
   flight, bounce, rollout, metrics, recent shots, replay, and reset.
@@ -75,13 +75,14 @@ trigger large per-frame CPU grass rebuilds. Nearby decking has directional wood
 grain, and the ball has staggered dimples, a subtle marking, and visible rolling
 rotation.
 
-The follow rig smooths its offset relative to the interpolated ball and eases into
-a closer rollout view. Objects do not orbit, lift or snap the camera. Complete
+The single shot camera starts directly behind the tee/aiming line and follows the
+interpolated ball into a closer rollout view. A centred arrow makes the forward
+target line visible before launch. Objects do not orbit, lift or snap the camera. Complete
 obstructing trees and props smoothly become transparent, then restore their normal
 opacity when the view clears. Their shadows use independent geometry and remain
 stable. This uses continuous alpha, not noisy pixel cutouts. Only actual terrain
-sets a minimum camera height. Distant tee/overview shots get a minimal locator when
-the sphere would be too small to identify.
+sets a minimum camera height. There are no tee/overview camera switches or optional
+follow mode during play; the builder's plan/3D authoring views remain independent.
 
 The trail is a short, camera-facing, softly feathered ribbon, using a bounded
 physics-sample ring and Hermite interpolation. It is rebuilt within a fixed small
@@ -106,7 +107,6 @@ or `--rendering-method gl_compatibility`.
 | --- | --- |
 | Space | Launch a simulated shot |
 | 1 / 2 / 3 | Driver / iron / wedge |
-| C | Tee / follow-ball / bird’s-eye camera |
 | R | Fresh ball; cancel an active shot |
 | P | Replay without adding a history entry |
 | Escape | Pause / resume / back |
@@ -169,7 +169,7 @@ golf_game/
 │   │   ├── game_settings.gd         Validated persistent user preferences
 │   │   └── audio_director.gd        Original ambience and sound cues
 │   ├── driving_range.gd             Shot/session lifecycle and composition
-│   ├── domain/                     Validated launch contract, pure flight solver
+│   ├── domain/                     Backend launch data, pure flight solver
 │   ├── holes/                      Editor, versioned hole data, play and scoring
 │   ├── input/                      Common shot source and standalone simulator
 │   ├── world/
@@ -205,14 +205,18 @@ these components parses serial packets or imports radar-backend code.
 
 Direction is relative to the calibrated target line; positive is right. Elevation
 is degrees above horizontal. Godot uses +X right, +Y up, and −Z down the range.
-Input bounds are 0.5–100 m/s, ±85° direction, and 0–85° elevation, all finite numbers.
-Display unit preferences do not change the input contract or simulation units.
+Backend launch values are trusted and used as supplied: there are no frontend
+speed, angle or spin limits. A shot ID is optional (generated locally when absent),
+and omitted launch fields default to zero. Numeric IDs and the simple field aliases
+`speed`/`velocity`, `direction`, `elevation`, and `spin` are also accepted. Extra
+metadata is ignored. Shot validation and unit correctness belong to the backend.
+JSON shot files must decode to an object. Display unit preferences do not change
+simulation units; the practice sliders' convenient ranges do not constrain input.
 
 `spin_rpm` is **side spin only**, about the vertical axis: negative curves left,
 positive curves right, zero is neutral. It is independent of launch direction and
-does not supply backspin or topspin. The accepted range is ±12,000 RPM; practice
-controls expose ±4,000 RPM. Older payloads without this field default to zero.
-Nonfinite values, strings, booleans and out-of-range spin are rejected.
+does not supply backspin or topspin. Practice controls expose ±4,000 RPM; backend
+values have no such bound. Older payloads without this field default to zero.
 
 ```bash
 python3 tools/run_range.py --shot golf_game/examples/shot.json
@@ -224,7 +228,7 @@ flowchart LR
     App --> Range[Driving range lifecycle]
     Demo[Practice UI / JSON file] --> Source[ShotSource]
     Radar[Future WebSocket adapter] -.-> Source
-    Source --> Contract[GolfShot validation]
+    Source --> Contract[GolfShot · backend-owned values]
     Contract --> Range
     Range --> Model[BallFlight · 120 Hz]
     Model --> Visual[Ball / trail / camera]
@@ -236,9 +240,10 @@ flowchart LR
 A future WebSocket adapter extends `ShotSource` and calls `submit_payload(payload)`;
 connect its `shot_received` signal just like the demo source. The range also exposes
 `receive_shot(payload)`. Parsing success is distinct from game acceptance. The
-range ignores the latest 512 accepted IDs and refuses new shots while busy.
+range runs one ball at a time and custom holes only launch while a turn is ready;
+these lifecycle rules do not filter launch values or require unique metadata IDs.
 Transport readiness, turn IDs, acknowledgements and reconnect/resume belong in
-that integration layer.
+the future integration layer.
 
 ### Simulation scope
 
@@ -261,13 +266,14 @@ Cameras, distance-unit preferences and graphics settings cannot alter shot physi
 
 ## Verification and visual review
 
-`run_range.py --check` covers malformed/nonfinite input, launch axes, all presets,
-landing/rollout, duplicate and busy events, preview agreement, replay, reset,
+`run_range.py --check` covers unrestricted backend input (including a 4000 m/s
+regression), optional IDs/field aliases, launch axes, all presets,
+landing/rollout, busy events, preview agreement, replay, reset,
 startup/menu flow, UI launch, pause/resume, settings navigation, unit conversion,
 and actual preference save/reload. Checks have watchdogs and nonzero failure exits.
 Camera checks follow entire short, long, and wide shots at 30/60/120 Hz, verify
 framing clear of the HUD, and prove that adding obstacles cannot change the camera
-path. Other checks cover signed-spin validation and mirrored curvature, smooth
+path. Other checks cover behind-the-tee alignment, mirrored side-spin curvature, smooth
 object-opacity transitions, material isolation, bounded trail geometry, exact trail
 head attachment, landing fade-out, and visible-surface contact.
 

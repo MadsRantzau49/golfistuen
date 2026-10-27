@@ -58,7 +58,8 @@ func set_document(document:HoleDefinition)->void:
 	close_turf=CloseTurf.new()
 	close_turf.surface=surface
 	close_turf.shader_override=preload("res://shaders/hole_turf.gdshader")
-	close_turf.terrain_maps={"height_field":height_texture,"surface_map":surface_texture,"oob_map":oob_texture}
+	close_turf.terrain_maps={"height_field":height_texture,"surface_map":surface_texture,"oob_map":oob_texture,
+		"cup_position":hole.cup,"cup_radius":hole.cup_radius(),"cup_placed":hole.cup_placed}
 	add_child(close_turf)
 	close_turf.apply_quality(str(GameSettings.get_value("quality")))
 
@@ -182,21 +183,55 @@ func _build_markers()->void:
 		var sphere:=SphereMesh.new(); sphere.radius=.13; sphere.height=.26
 		_object(sphere,tee_position+Vector3(x,.13,0),Color("d7c28c"))
 	if hole.cup_placed:
-		var center:=Vector3(hole.cup.x,0,hole.cup.y); center.y=surface.world_height(center)
-		var cup_mesh:=CylinderMesh.new(); cup_mesh.top_radius=.065; cup_mesh.bottom_radius=.065; cup_mesh.height=.12
-		_object(cup_mesh,center-Vector3(0,.06,0),Color("11251d"))
-		var pole:=CylinderMesh.new(); pole.top_radius=.025; pole.bottom_radius=.035; pole.height=2.4
-		_object(pole,center+Vector3(0,1.2,0),Color("e8dcb9"))
+		var center:=Vector3(hole.cup.x,surface.cup_rim_height(),hole.cup.y)
+		_build_cup(center)
+		var pole:=CylinderMesh.new(); pole.top_radius=.007; pole.bottom_radius=HoleDefinition.FLAGSTICK_RADIUS; pole.height=2.4+HoleDefinition.CUP_DEPTH
+		_object(pole,center+Vector3(0,1.2-HoleDefinition.CUP_DEPTH*.5,0),Color("e8dcb9"))
 		var flag:=PlaneMesh.new(); flag.orientation=PlaneMesh.FACE_Z; flag.size=Vector2(1,.55); flag.subdivide_width=10
 		var instance:=_object(flag,center+Vector3(.5,2.1,0),Color("ce8d48"))
 		var flag_material:=ShaderMaterial.new(); flag_material.shader=preload("res://shaders/flag.gdshader"); instance.material_override=flag_material
 	material.set_shader_parameter("cup_position",hole.cup)
 	material.set_shader_parameter("cup_placed",hole.cup_placed)
+	material.set_shader_parameter("cup_radius",hole.cup_radius())
+	if close_turf:
+		for patch in close_turf.patches:
+			patch.material_override.set_shader_parameter("cup_position",hole.cup)
+			patch.material_override.set_shader_parameter("cup_radius",hole.cup_radius())
+			patch.material_override.set_shader_parameter("cup_placed",hole.cup_placed)
 	# White boundary stakes make the outer OOB limit visible in play as well.
 	for x in [-120.0,120.0]:
 		for z in range(-440,41,40): _stake(Vector3(x,0,z))
 	for z in [-440.0,40.0]:
 		for x in range(-80,81,40): _stake(Vector3(x,0,z))
+
+
+func _build_cup(center:Vector3)->void:
+	var radius:=hole.cup_radius()
+	var wall:=SurfaceTool.new();wall.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var rim_mesh:=SurfaceTool.new();rim_mesh.begin(Mesh.PRIMITIVE_TRIANGLES)
+	for index in range(96):
+		var a:=TAU*index/96.0;var b:=TAU*(index+1)/96.0
+		var pa:=Vector3(cos(a)*radius,0,sin(a)*radius)
+		var pb:=Vector3(cos(b)*radius,0,sin(b)*radius)
+		pa.y=surface.rim_height_at(center+pa)-center.y
+		pb.y=surface.rim_height_at(center+pb)-center.y
+		var ba:=Vector3(pa.x,-HoleDefinition.CUP_DEPTH,pa.z)
+		var bb:=Vector3(pb.x,-HoleDefinition.CUP_DEPTH,pb.z)
+		for point in [pa,pb,ba,pb,bb,ba]:
+			wall.set_normal(Vector3(-point.x,0,-point.z).normalized());wall.add_vertex(point)
+		var outer_a:=Vector3(cos(a)*(radius+.012),0,sin(a)*(radius+.012))
+		var outer_b:=Vector3(cos(b)*(radius+.012),0,sin(b)*(radius+.012))
+		for value in [pa,outer_a,pb,pb,outer_a,outer_b]:
+			var point:Vector3=value;point.y=surface.rim_height_at(center+point)-center.y+.002
+			rim_mesh.set_normal(Vector3.UP);rim_mesh.add_vertex(point)
+	var lining:=MeshInstance3D.new();lining.name="CupLining";lining.mesh=wall.commit();lining.position=center
+	var lining_material:=RangePalette.material(Color("24382d"));lining_material.cull_mode=BaseMaterial3D.CULL_DISABLED
+	lining.material_override=lining_material;markers_root.add_child(lining)
+	var bottom:=CylinderMesh.new();bottom.top_radius=radius;bottom.bottom_radius=radius;bottom.height=.008;bottom.radial_segments=96
+	var floor_instance:=MeshInstance3D.new();floor_instance.name="CupFloor";floor_instance.mesh=bottom;floor_instance.position=center-Vector3.UP*(HoleDefinition.CUP_DEPTH+.004)
+	floor_instance.material_override=RangePalette.material(Color("08130d"));markers_root.add_child(floor_instance)
+	var lip:=MeshInstance3D.new();lip.name="CupRim";lip.mesh=rim_mesh.commit();lip.position=center
+	lip.material_override=RangePalette.material(Color("d5d6c8"));markers_root.add_child(lip)
 
 
 func _stake(point:Vector3)->void:
