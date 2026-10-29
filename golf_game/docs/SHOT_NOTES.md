@@ -36,6 +36,20 @@ immediately. You can select an earlier shot in history and edit its description.
 shot** saves them as a JSON file. “Load older shots” pages through the current radar
 session's saved captures.
 
+## Detector's current estimate
+
+The read-only result above the form updates while recording as soon as a ball is
+registered. It shows estimated **speed (m/s and km/h), elevation and left/right
+direction**, plus the supporting observation count when available. Short tracks
+are marked as approximate. A later unconfirmed movement does not erase an earlier
+registered ball from the same window.
+
+Your speed/elevation/direction buttons remain your own independent description;
+the detector does not fill them in. A capture without a registered ball says so.
+History loads the estimate actually registered at capture time, including old
+records created before this display existed. Revised offline replay results are
+written to separate analysis reports, preserving the recorded decision for comparison.
+
 ## What is recorded
 
 Every pair of presses creates a capture even if the detector finds no swing or
@@ -56,6 +70,8 @@ It contains:
 - The operator's client keypress timestamps for comparison.
 - Speed, elevation, direction and optional notes (`null` for unset/None).
 - Detector attempt counts, confirmed/unconfirmed results and rejection summaries.
+- The latest registered detector estimate, observation support and algorithm version
+  when available. This remains available after later rejected motion.
 - Annotation revision and complete/interrupted state.
 
 `shot_capture_started`, `shot_capture_ended` and `shot_annotation_saved` events

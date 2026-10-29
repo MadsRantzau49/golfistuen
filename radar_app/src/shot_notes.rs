@@ -89,10 +89,24 @@ pub struct Capture {
     pub interrupted_attempts: u64,
     pub detector_results: Vec<Value>,
     pub omitted_result_summaries: u64,
+    #[serde(default)]
+    pub latest_registered_shot: Option<Value>,
 }
 
 impl Capture {
     pub fn summary(&self, root: &Path) -> Value {
+        let mut guess = self.latest_registered_shot.clone().or_else(|| {
+            self.detector_results
+                .iter()
+                .rev()
+                .find(|result| {
+                    result["outcome"] == "ball_detected" && result["selected_shot"].is_object()
+                })
+                .map(|result| result["selected_shot"].clone())
+        });
+        if let Some(shot) = guess.as_mut().and_then(Value::as_object_mut) {
+            shot.remove("spin_rpm");
+        }
         json!({"schema_version":self.schema_version,"capture_id":self.capture_id,"session_id":self.session_id,
             "state":self.state,"started":self.started,"ended":self.ended,"end_reason":self.end_reason,
             "duration_s":self.ended.as_ref().map(|end|(end.elapsed_s-self.started.elapsed_s).max(0.0)),
@@ -101,6 +115,7 @@ impl Capture {
             "frame_count":self.frame_count,"point_count":self.point_count,"first_frame":self.first_frame,"last_frame":self.last_frame,
             "detector_attempts":self.detector_attempts,"confirmed_balls":self.confirmed_balls,"rejected_attempts":self.rejected_attempts,
             "interrupted_attempts":self.interrupted_attempts,
+            "detector_guess":guess,"detector_last_result":self.detector_results.last().map(|result|&result["outcome"]),
             "recording_directory":root.join(&self.session_id),
             "capture_file":root.join(&self.session_id).join("captures").join(format!("{}.json",self.capture_id))})
     }
@@ -138,6 +153,13 @@ impl ShotNotes {
 
     pub fn active_id(&self) -> Option<&str> {
         self.active.as_deref()
+    }
+
+    pub fn active_summary(&self) -> Option<Value> {
+        self.active
+            .as_ref()
+            .and_then(|id| self.captures.get(id))
+            .map(|capture| capture.summary(&self.root))
     }
 
     pub fn info(&self, offset: usize) -> Value {
@@ -238,6 +260,7 @@ impl ShotNotes {
             interrupted_attempts: 0,
             detector_results: Vec::new(),
             omitted_result_summaries: 0,
+            latest_registered_shot: None,
         };
         self.persist(&capture)?;
         log.set_capture_id(Some(id.to_owned()));
@@ -404,6 +427,48 @@ impl ShotNotes {
             let mut selected_shot = report["selected_shot"].clone();
             if let Some(shot) = selected_shot.as_object_mut() {
                 shot.remove("spin_rpm");
+                shot.insert("algorithm".into(), report["algorithm"].clone());
+                shot.insert(
+                    "observations".into(),
+                    json!(
+                        report["selected_observations"]
+                            .as_array()
+                            .map_or(0, Vec::len)
+                    ),
+                );
+                shot.insert(
+                    "velocity_std_mps".into(),
+                    report["selected_fit"]["velocity_std_mps"].clone(),
+                );
+                shot.insert(
+                    "validation_mode".into(),
+                    report["selected_club_evidence"]["validation_mode"].clone(),
+                );
+                shot.insert(
+                    "club_reach_m".into(),
+                    report["selected_club_evidence"]["observed_club_reach_m"].clone(),
+                );
+                let observations = report["selected_observations"].as_array();
+                shot.insert(
+                    "first_frame".into(),
+                    observations
+                        .and_then(|v| v.first())
+                        .map_or(Value::Null, |v| v["frame_number"].clone()),
+                );
+                shot.insert(
+                    "last_frame".into(),
+                    observations
+                        .and_then(|v| v.last())
+                        .map_or(Value::Null, |v| v["frame_number"].clone()),
+                );
+                shot.insert("detection_frame".into(), json!(frame));
+                shot.insert(
+                    "furthest_range_m".into(),
+                    report["selected_furthest_range_m"].clone(),
+                );
+            }
+            if report["outcome"] == "ball_detected" && selected_shot.is_object() {
+                capture.latest_registered_shot = Some(selected_shot.clone());
             }
             capture.detector_results.push(json!({"start_frame":report["start_frame"],"end_frame":frame,"outcome":report["outcome"],
                 "abort_reason":report["abort_reason"],"point_rejections":report["point_rejections"],"track_rejections":reasons,"selected_shot":selected_shot}));
@@ -555,5 +620,47 @@ mod tests {
         .normalized()
         .unwrap();
         assert!(empty.notes.is_none());
+    }
+
+    #[test]
+    fn registered_estimate_is_retained_after_rejected_motion_and_loads_from_old_records() {
+        let root = std::env::temp_dir().join(format!(
+            "shot-guess-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let mut log = LiveLog::in_directory(&root, json!({}), "").unwrap();
+        let mut notes = ShotNotes::new(&log);
+        notes.start("guess", None, &mut log, None).unwrap();
+        notes.detector_report(&json!({"outcome":"ball_detected","algorithm":"backward_outgoing_club_reach_v2","start_frame":10,
+            "selected_shot":{"shot_id":"test","speed_mps":12.5,"direction_deg":-6.0,"elevation_deg":8.0,"spin_rpm":0.0},
+            "selected_observations":[{},{},{}],"tracks":[]}),Some(20));
+        notes.detector_report(
+            &json!({"outcome":"no_ball_detected","start_frame":30,"tracks":[]}),
+            Some(40),
+        );
+        let saved = notes
+            .end("guess", None, "space_stop", &mut log, Some(40))
+            .unwrap();
+        assert_eq!(saved["detector_guess"]["speed_mps"], 12.5);
+        assert_eq!(saved["detector_last_result"], "no_ball_detected");
+        assert!(saved["detector_guess"].get("spin_rpm").is_none());
+        let mut legacy: Value =
+            serde_json::from_reader(File::open(saved["capture_file"].as_str().unwrap()).unwrap())
+                .unwrap();
+        legacy
+            .as_object_mut()
+            .unwrap()
+            .remove("latest_registered_shot");
+        let capture: Capture = serde_json::from_value(legacy).unwrap();
+        assert_eq!(
+            capture.summary(&root)["detector_guess"]["direction_deg"],
+            -6.0
+        );
+        drop((notes, log));
+        fs::remove_dir_all(root).unwrap();
     }
 }

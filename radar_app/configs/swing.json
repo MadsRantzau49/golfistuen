@@ -22,5 +22,7 @@
   "context_frames": 50,
   "background_samples": 256,
   "hypotheses_per_endpoint": 4,
-  "max_hypotheses": 256
+  "max_hypotheses": 256,
+  "max_event_observations": 4096,
+  "max_backward_fits": 8192
 }

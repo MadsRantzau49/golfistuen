@@ -84,10 +84,19 @@ func _run()->void:
 		"annotation":{"speed":null,"elevation":null,"direction":null,"notes":null},"annotation_revision":0,
 		"frame_count":0,"point_count":0,"confirmed_balls":0,"rejected_attempts":0,"capture_file":"/logs/123-1/captures/shot.json"}
 	_send({"type":"capture_started","request_id":start.request_id,"capture":record})
+	await _frames(2)
+	check(panel._detector_guess.text.contains("no ball registered"),"A capture starts without an invented detector estimate")
+	record.detector_guess={"speed_mps":12.5,"elevation_deg":8.0,"direction_deg":-6.0,"observations":4,"algorithm":"backward_outgoing_club_reach_v2"}
+	record.confirmed_balls=1;record.detector_last_result="ball_detected"
+	_send({"type":"capture_progress","capture":record});await _frames(2)
+	check(panel._detector_guess.text.contains("12.5 m/s") and panel._detector_guess.text.contains("6.0° left"),"Registered speed, elevation and direction appear during a timed capture")
+	check(panel.client.annotation_for(key).speed==null,"Detector estimates do not fill in the operator's independent labels")
+	record.detector_last_result="no_ball_detected";_send({"type":"capture_progress","capture":record});await _frames(2)
+	check(panel._detector_guess.text.contains("12.5 m/s") and panel._detector_guess.text.contains("retained"),"Later rejected motion does not erase a registered shot estimate")
 	var complete:=record.duplicate(true);complete.state="complete";complete.duration_s=1.0;complete.frame_count=7;complete.point_count=20;complete.first_frame=11;complete.last_frame=17
 	complete.ended={"elapsed_s":2.0,"unix_time_ms":11000,"event_sequence":10,"raw_bytes_received":500,"last_frame_number":17}
 	_send({"type":"capture_ended","request_id":end.request_id,"capture":complete});await _frames()
-	check(panel.ending_key.is_empty() and panel.client.records[key].state=="complete","Capture remains available even without an automatic ball detection")
+	check(panel.ending_key.is_empty() and panel.client.records[key].state=="complete","Capture end keeps the recorded prediction and timing")
 	check(panel._notes.text.is_empty() and panel.selected_summary().annotation.notes==null,"Other notes default to None")
 	check(panel.CHOICES.speed.size()==4 and panel.CHOICES.elevation.size()==7 and panel.CHOICES.direction.size()==5,"All requested qualitative presets are present")
 	for field in ["speed","elevation","direction"]:
@@ -107,7 +116,10 @@ func _run()->void:
 	panel.export_selected(exported)
 	var saved:Variant=JSON.parse_string(FileAccess.get_file_as_string(exported))
 	check(saved is Dictionary and saved.annotation.notes==save.annotation.notes and saved.ended.elapsed_s==2.0,"Export ties the description to its saved timing window")
+	check(saved.detector_guess.speed_mps==12.5,"Saved notes retain the actual detector estimate")
 	panel.client.disconnect_from();panel._notes.text="Offline edit preserved";panel._notes.text_changed.emit();panel._flush_current()
+	panel.client._handle_message({"type":"capture_progress","capture":complete})
+	check(panel.client.annotation_for(key).notes=="Offline edit preserved","Detector progress cannot overwrite an unsaved operator description")
 	var recovered:Node=load("res://scripts/input/shot_notes_client.gd").new();recovered.cache_path=cache;root.add_child(recovered)
 	check(recovered.drafts.has(key) and recovered.annotation_for(key).notes=="Offline edit preserved","Disconnected edits survive local-cache reload")
 	recovered.queue_free();panel.set_interactive(false);check(panel.client.peer==null and not panel.ui_layer.visible,"Leaving shot notes disconnects the capture client")

@@ -547,6 +547,9 @@ fn run_loop(
             if let Some(game) = client.as_mut() {
                 game.send(json!({"type":"status","radar_ready":last_frame.is_some_and(|time|time.elapsed()<FRAME_TIMEOUT),"protocol":1,
                     "arm_id":game.arm,"detection_state":detector.state,"notes_mode":game.notes_enabled,"active_capture_id":notes.active_id(),"last_frame_number":last_number}));
+                if game.notes_enabled {
+                    if let Some(capture)=notes.active_summary() {game.send(json!({"type":"capture_progress","capture":capture}));}
+                }
             }
         }
     }

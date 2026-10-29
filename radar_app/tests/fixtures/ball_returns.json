@@ -1,0 +1,9 @@
+{
+  "1": {"first_frame":2353,"last_frame":2363,"min_radial_speed_mps":12.0,"max_radial_speed_mps":15.0},
+  "7": {"first_frame":6793,"last_frame":6797,"min_radial_speed_mps":13.0,"max_radial_speed_mps":15.0},
+  "13": {"first_frame":8297,"last_frame":8306,"min_radial_speed_mps":12.0,"max_radial_speed_mps":15.0},
+  "19": {"first_frame":9090,"last_frame":9096,"min_radial_speed_mps":14.0,"max_radial_speed_mps":17.0},
+  "25": {"first_frame":12139,"last_frame":12142,"min_radial_speed_mps":12.0,"max_radial_speed_mps":14.0},
+  "32": {"first_frame":13086,"last_frame":13088,"min_radial_speed_mps":6.0,"max_radial_speed_mps":7.0},
+  "38": {"first_frame":14110,"last_frame":14112,"min_radial_speed_mps":19.0,"max_radial_speed_mps":22.0}
+}

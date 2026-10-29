@@ -191,6 +191,9 @@ class RustLiveTest(unittest.TestCase):
             first_capture = receive_until(lambda message: message.get("request_id") == "start-1")["capture"]
             self.assertEqual(first_capture["annotation"], {"speed": None, "elevation": None, "direction": None, "notes": None})
             send_hit(15.0)
+            live_guess = receive_until(lambda message: message["type"] == "capture_progress"
+                                       and message["capture"]["confirmed_balls"] == 1)
+            self.assertIn("speed_mps", live_guess["capture"]["detector_guess"])
             command("capture_end", "end-1", capture_id="notes-hit-1", client_time_ms=12000)
             captured_hit = receive_until(lambda message: message.get("request_id") == "end-1")["capture"]
             self.assertEqual(captured_hit["state"], "complete")
@@ -198,6 +201,8 @@ class RustLiveTest(unittest.TestCase):
             self.assertGreater(captured_hit["point_count"], 0)
             self.assertGreater(captured_hit["duration_s"], 0)
             self.assertEqual(captured_hit["confirmed_balls"], 1)
+            self.assertAlmostEqual(captured_hit["detector_guess"]["speed_mps"], math.hypot(15, 3), delta=0.8)
+            self.assertNotIn("spin_rpm", captured_hit["detector_guess"])
             annotation = {"speed": "full_speed", "elevation": "instant_ceiling", "direction": "full_left",
                           "notes": "Travelled about 4 m, about 2 m high, then hit ceiling"}
             command("capture_annotate", "save-1", session_id=info["session_id"], capture_id="notes-hit-1",
@@ -215,6 +220,7 @@ class RustLiveTest(unittest.TestCase):
             missed = receive_until(lambda message: message.get("request_id") == "end-2")["capture"]
             self.assertEqual(missed["state"], "complete")
             self.assertEqual(missed["confirmed_balls"], 0)
+            self.assertIsNone(missed["detector_guess"])
             self.assertGreater(missed["frame_count"], 0)
             command("capture_annotate", "save-2", session_id=info["session_id"], capture_id="notes-missed-2",
                     annotation_revision=0, annotation={"speed": "low", "elevation": "rolling", "direction": "full_right", "notes": None})
@@ -255,7 +261,7 @@ class RustLiveTest(unittest.TestCase):
             self.assertEqual((session / "radar.cfg").read_text(), (root / "radar_app/configs/golf.cfg").read_text())
             metadata = json.loads((session / "session.json").read_text())
             self.assertAlmostEqual(metadata["settings"]["detector"]["sensor"]["range_resolution_m"], 0.1953125)
-            self.assertEqual(metadata["settings"]["detector"]["algorithm"], "sensor_normalized_ballistic_split_v1")
+            self.assertEqual(metadata["settings"]["detector"]["algorithm"], "backward_outgoing_club_reach_v2")
             captured = b"".join(path.read_bytes() for path in sorted(session.glob("raw-*.dat")))
             self.assertEqual(captured, sent_bytes, "Capture must preserve every UART byte, including noise and unarmed frames")
             events = [json.loads(line) for path in sorted(session.glob("events-*.jsonl"))

@@ -158,6 +158,10 @@ func _handle_message(message: Dictionary) -> void:
 		for record in message.get("captures",[]):
 			if record is Dictionary:_upsert(record)
 		_save_cache();info_received.emit(message);sync_drafts()
+	elif kind=="capture_progress":
+		if message.get("capture") is Dictionary:
+			var key:=_upsert(message.capture)
+			if not key.is_empty():record_changed.emit(key)
 	elif kind in ["capture_started","capture_ended","capture_saved","capture_loaded"]:
 		if not message.get("capture") is Dictionary:return
 		var id:=str(message.get("request_id",""));var key:=key_for(message.capture)

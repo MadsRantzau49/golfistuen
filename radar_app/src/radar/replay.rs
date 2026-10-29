@@ -30,6 +30,7 @@ pub fn replay_session(directory: &Path, config: SwingConfig) -> io::Result<Value
     let mut attempts = Vec::new();
     let mut last_number = None;
     let mut last_arm: Option<String> = None;
+    let mut last_capture: Option<String> = None;
     let mut frames = 0;
     let mut armed_frames = 0;
     for path in paths {
@@ -41,8 +42,8 @@ pub fn replay_session(directory: &Path, config: SwingConfig) -> io::Result<Value
                 let capture = &event["data"]["capture"];
                 if capture["state"] == "complete" {
                     match detector.finish() {
-                        Some(DetectionEvent::BallDetected(shot))=>attempts.push(json!({"end_frame":last_number,"shot":shot,"report":detector.take_report()})),
-                        Some(DetectionEvent::NoBallDetected)=>attempts.push(json!({"end_frame":last_number,"report":detector.take_report()})),
+                        Some(DetectionEvent::BallDetected(shot))=>attempts.push(json!({"capture_id":capture["capture_id"],"end_frame":last_number,"shot":shot,"report":detector.take_report()})),
+                        Some(DetectionEvent::NoBallDetected)=>attempts.push(json!({"capture_id":capture["capture_id"],"end_frame":last_number,"report":detector.take_report()})),
                         _=>{}
                     }
                 } else if let Some(report) = detector.abort_report(
@@ -50,10 +51,11 @@ pub fn replay_session(directory: &Path, config: SwingConfig) -> io::Result<Value
                         .as_str()
                         .unwrap_or("capture_interrupted"),
                 ) {
-                    attempts.push(json!({"end_frame":last_number,"report":report}));
+                    attempts.push(json!({"capture_id":capture["capture_id"],"end_frame":last_number,"report":report}));
                 }
                 detector.reset();
                 last_arm = None;
+                last_capture = None;
             }
             // Preserve revocations that occur between radar frames as well as
             // the arm token visible on the next frame (which may be reused).
@@ -70,7 +72,9 @@ pub fn replay_session(directory: &Path, config: SwingConfig) -> io::Result<Value
             ) {
                 let reason = format!("recorded_{}", event["type"].as_str().unwrap());
                 if let Some(report) = detector.abort_report(&reason) {
-                    attempts.push(json!({"end_frame":last_number,"report":report}));
+                    attempts.push(
+                        json!({"capture_id":last_capture,"end_frame":last_number,"report":report}),
+                    );
                 }
                 detector.reset();
                 last_arm = None;
@@ -91,11 +95,14 @@ pub fn replay_session(directory: &Path, config: SwingConfig) -> io::Result<Value
             let arm = data["arm_id"].as_str().map(str::to_owned);
             if arm != last_arm || last_number.is_some_and(|last| number <= last) {
                 if let Some(report) = detector.abort_report("recorded_arm_or_frame_reset") {
-                    attempts.push(json!({"end_frame":last_number,"report":report}));
+                    attempts.push(
+                        json!({"capture_id":last_capture,"end_frame":last_number,"report":report}),
+                    );
                 }
                 detector.reset();
             }
             last_arm = arm;
+            last_capture = event["capture_id"].as_str().map(str::to_owned);
             last_number = Some(number);
             if last_arm.is_none() {
                 continue;
@@ -125,17 +132,17 @@ pub fn replay_session(directory: &Path, config: SwingConfig) -> io::Result<Value
                 match event {
                     DetectionEvent::SwingDetected => {}
                     DetectionEvent::BallDetected(shot) => attempts.push(
-                        json!({"end_frame":number,"shot":shot,"report":detector.take_report()}),
+                        json!({"capture_id":last_capture,"end_frame":number,"shot":shot,"report":detector.take_report()}),
                     ),
                     DetectionEvent::NoBallDetected => {
-                        attempts.push(json!({"end_frame":number,"report":detector.take_report()}))
+                        attempts.push(json!({"capture_id":last_capture,"end_frame":number,"report":detector.take_report()}))
                     }
                 }
             }
         }
     }
     if let Some(report) = detector.abort_report("recording_ended") {
-        attempts.push(json!({"end_frame":last_number,"report":report}));
+        attempts.push(json!({"capture_id":last_capture,"end_frame":last_number,"report":report}));
     }
     for attempt in &mut attempts {
         let start = attempt["report"]["start_frame"].as_u64().unwrap_or(0);
@@ -155,9 +162,36 @@ pub fn replay_session(directory: &Path, config: SwingConfig) -> io::Result<Value
         .iter()
         .filter(|a| a["report"]["outcome"] == "no_ball_detected")
         .count();
+    let mut captures = Vec::new();
+    let capture_directory = directory.join("captures");
+    if capture_directory.is_dir() {
+        for entry in std::fs::read_dir(capture_directory)? {
+            let path = entry?.path();
+            if path.extension().and_then(|v| v.to_str()) != Some("json") {
+                continue;
+            }
+            let record: Value = serde_json::from_reader(File::open(path)?)?;
+            let matching: Vec<_> = attempts
+                .iter()
+                .filter(|attempt| {
+                    attempt["capture_id"] == record["capture_id"] && attempt["shot"].is_object()
+                })
+                .collect();
+            captures.push(json!({"capture_id":record["capture_id"],"annotation":record["annotation"],"started":record["started"],
+                "original_confirmed_balls":record["confirmed_balls"],"original_results":record["detector_results"],
+                "replayed_confirmed_balls":matching.len(),"replayed_shots":matching.iter().map(|a|&a["shot"]).collect::<Vec<_>>(),
+                "replayed_validation":matching.iter().map(|a|&a["report"]["selected_club_evidence"]["validation_mode"]).collect::<Vec<_>>()}));
+        }
+        captures.sort_by(|a, b| {
+            a["started"]["elapsed_s"]
+                .as_f64()
+                .unwrap_or(0.0)
+                .total_cmp(&b["started"]["elapsed_s"].as_f64().unwrap_or(0.0))
+        });
+    }
     Ok(json!({"session":directory,"configuration":configuration,
         "statistics":{"frames":frames,"armed_frames":armed_frames,"recorded_swing_triggers":originals.len(),
             "replayed_attempts":attempts.len(),"confirmed_balls":confirmed,"unconfirmed_attempts":no_ball},
-        "original_triggers":originals,"attempts":attempts,
+        "original_triggers":originals,"attempts":attempts,"captures":captures,
         "label_note":"Original swing triggers are not ground-truth ball labels. Replay preserves original observations and arming; it does not simulate game disarming after a newly accepted shot."}))
 }

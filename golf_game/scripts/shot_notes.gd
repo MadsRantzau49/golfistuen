@@ -26,6 +26,7 @@ var _port: SpinBox
 var _status: Label
 var _state: Label
 var _clock: Label
+var _detector_guess: Label
 var _capture_button: Button
 var _history: ItemList
 var _notes: TextEdit
@@ -69,6 +70,8 @@ func _build_ui() -> void:
 	_capture_button=_button(capture_row,"Start shot  [Space]",toggle_capture,true);_capture_button.custom_minimum_size=Vector2(270,54)
 	_state=AppStyle.label("Ready for a timed capture",20,AppStyle.CREAM);_state.size_flags_horizontal=Control.SIZE_EXPAND_FILL;capture_row.add_child(_state)
 	_clock=AppStyle.label("0.0 s",28,AppStyle.GOLD);capture_row.add_child(_clock)
+	_detector_guess=AppStyle.label("Detector estimate · no ball registered yet",16,AppStyle.MUTED)
+	_detector_guess.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART;column.add_child(_detector_guess)
 	var body:=HBoxContainer.new();body.add_theme_constant_override("separation",16);body.size_flags_vertical=Control.SIZE_EXPAND_FILL;column.add_child(body)
 	var history_panel:=PanelContainer.new();history_panel.custom_minimum_size.x=245;history_panel.add_theme_stylebox_override("panel",AppStyle.box());body.add_child(history_panel)
 	var left:=VBoxContainer.new();left.add_theme_constant_override("separation",10);history_panel.add_child(left)
@@ -169,6 +172,9 @@ func _refresh_history() -> void:
 func _select_index(index: int) -> void:
 	if index<0 or index>=_keys.size():return
 	_flush_current();selected_key=_keys[index];_load_form()
+	if client.connected:
+		var record: Dictionary=client.records[selected_key]
+		client.request("capture_get",{"session_id":record.session_id,"capture_id":record.capture_id})
 
 
 func _description(annotation: Dictionary) -> String:
@@ -193,12 +199,31 @@ func _load_form() -> void:
 	if _notes.text!=text:_notes.text=text
 	_summary.text=_description(annotation) if not selected_key.is_empty() else "Press Space to create the first shot. Estimates and notes can be filled in afterwards."
 	_updating=false;_update_saved_status()
+	_update_detector_guess()
 	if client==null or not client.records.has(selected_key):_timing.text="";return
 	var record: Dictionary=client.records[selected_key]
 	var end: Variant=record.get("ended")
 	var duration: String="%.2f s"%float(record.duration_s) if record.get("duration_s")!=null else "Not ended"
 	_timing.text="Window: %s · %s frames / %s points · detector: %s confirmed, %s unconfirmed attempts\n%s"%[duration,str(record.get("frame_count",0)),str(record.get("point_count",0)),str(record.get("confirmed_balls",0)),str(record.get("rejected_attempts",0)),str(record.get("capture_file","Awaiting radar acknowledgement…"))]
 	if end is Dictionary:_timing.text+="\nRadar log time %.3f → %.3f s · frames %s → %s"%[float(record.started.get("elapsed_s",0)),float(end.get("elapsed_s",0)),str(record.get("first_frame")),str(record.get("last_frame"))]
+
+
+func _update_detector_guess() -> void:
+	var record: Dictionary=client.records.get(selected_key,{}) if client!=null else {}
+	var guess: Variant=record.get("detector_guess")
+	if not guess is Dictionary or not guess.get("speed_mps") is float and not guess.get("speed_mps") is int:
+		_detector_guess.text="Detector estimate · no ball registered" if record.get("ended")!=null else "Detector estimate · no ball registered yet"
+		_detector_guess.add_theme_color_override("font_color",AppStyle.MUTED);return
+	var speed:=float(guess.get("speed_mps",0));var direction:=float(guess.get("direction_deg",0));var elevation:=float(guess.get("elevation_deg",0))
+	var heading:="%.1f° %s"%[absf(direction),"left" if direction<0 else "right"]
+	if is_zero_approx(direction):heading="0.0° straight"
+	var caption:="Recorded detector estimate" if record.get("ended")!=null else "Detector registered"
+	_detector_guess.text=caption+" · ≈ %.1f m/s (%.1f km/h) · elevation ≈ %.1f° · direction ≈ %s"%[speed,speed*3.6,elevation,heading]
+	if guess.get("observations") is float or guess.get("observations") is int:
+		_detector_guess.text+=" · %d observations"%int(guess.observations)
+		if int(guess.observations)<=3:_detector_guess.text+=" (short track; angles approximate)"
+	if record.get("detector_last_result")=="no_ball_detected":_detector_guess.text+="\nLater motion was unconfirmed; the registered estimate above is retained."
+	_detector_guess.add_theme_color_override("font_color",Color("a6e2b8"))
 
 
 func _update_saved_status() -> void:

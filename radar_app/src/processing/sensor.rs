@@ -1,10 +1,10 @@
 //! Measurement scales derived from the active TI radar configuration.
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 // Match the constant used by the TI demo when reporting point-cloud coordinates.
 const LIGHT_SPEED_MPS: f64 = 300_000_000.0;
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SensorModel {
     pub frame_period_s: f64,
     pub range_resolution_m: f64,

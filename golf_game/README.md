@@ -364,6 +364,9 @@ estimates, then add optional notes (default None). Every attempt is linked to it
 actual radar log window, including shots the detector missed. Descriptions auto-save
 to per-shot JSON files, with a local draft backup and editable history. Captures
 do not add gameplay strokes.
+The read-only detector estimate updates during capture with registered speed,
+elevation and direction, and is preserved in shot history separately from operator
+descriptions. Short tracks are explicitly marked approximate.
 
 See [`docs/SHOT_NOTES.md`](docs/SHOT_NOTES.md). `run_range.py --shot-notes` opens the
 form directly. The standard checks and release builder include `shot_notes_checks.gd`.

@@ -67,6 +67,51 @@ def summarize(directory, before, after, min_speed=None):
         "attempts": attempts}
 
 
+def summarize_captures(directory, minimum=None):
+    """Join operator labels to all original returns and their recorded decisions."""
+    metadata = json.loads((directory / "session.json").read_text())
+    if minimum is None:
+        minimum = metadata["settings"]["detector"].get("motion_threshold_mps", 0.0)
+    captures = sorted((json.loads(path.read_text()) for path in (directory / "captures").glob("*.json")),
+                      key=lambda capture: capture["started"]["elapsed_s"])
+    by_id = {capture["capture_id"]: {"capture": capture, "moving_points": [], "paths": [], "frames": []} for capture in captures}
+    for event in events(directory):
+        result = by_id.get(event.get("capture_id"))
+        if result is None:
+            continue
+        if event["type"] == "frame":
+            diagnostics = event["data"]["diagnostics"]
+            result["frames"].append({"frame_number": diagnostics["frame_number"], "points": diagnostics["points"]})
+            for point in diagnostics["points"]:
+                velocity = point.get("radial_velocity")
+                if velocity is None or not math.isfinite(velocity) or abs(velocity) < minimum:
+                    continue
+                position = [point[axis] for axis in ("x", "y", "z")]
+                if not all(isinstance(value, (int, float)) and math.isfinite(value) for value in position):
+                    continue
+                result["moving_points"].append({"frame": diagnostics["frame_number"], "time_s": event["elapsed_s"],
+                    "xyz": position, "range_m": math.sqrt(sum(value * value for value in position)),
+                    "radial_velocity": velocity, "snr_db": point.get("snr_db"),
+                    "old_point_rejection": point.get("ball_rejection"), "phase": diagnostics.get("phase")})
+        elif event["type"] == "swing_completed":
+            report = event["data"]["report"]
+            for track in report.get("tracks", []):
+                observations = track.get("observations", [])
+                if not observations:
+                    continue
+                positions = [sample.get("position", [sample.get(axis, 0) for axis in ("x", "y", "z")]) for sample in observations]
+                ranges = [math.sqrt(sum(value * value for value in position)) for position in positions]
+                result["paths"].append({"id": track.get("track_id"), "selected": track.get("track_id") == report.get("selected_hypothesis_id"),
+                    "samples": len(observations), "first_frame": observations[0]["frame_number"], "last_frame": observations[-1]["frame_number"],
+                    "start_range_m": ranges[0], "end_range_m": ranges[-1], "max_range_m": max(ranges),
+                    "first_xyz": positions[0], "last_xyz": positions[-1],
+                    "median_doppler_mps": statistics.median(sample["radial_velocity"] for sample in observations),
+                    "fit": track.get("fit"), "rejection": track.get("rejection_reason"), "club_evidence": track.get("club_evidence")})
+            result["selected_observations"] = report.get("selected_observations") or result.get("selected_observations", [])
+    return {"session": str(directory.resolve()), "sensor": metadata["settings"]["detector"].get("sensor"),
+            "minimum_motion_for_report_mps": minimum, "captures": list(by_id.values())}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("session", type=Path)
@@ -76,7 +121,72 @@ def main():
     parser.add_argument("--out", type=Path, help="Save the full JSON point report")
     parser.add_argument("--summary-only", action="store_true")
     parser.add_argument("--replay-report", type=Path, help="Compare a Rust replay-live JSON report")
+    parser.add_argument("--captures", action="store_true", help="Inspect operator-labelled Space-to-Space windows")
+    parser.add_argument("--capture-id", help="Limit --captures to one capture ID or its final numeric suffix")
+    parser.add_argument("--fixture-out", type=Path, help="Export compact labelled frame fixtures (requires --ball-labels)")
+    parser.add_argument("--ball-labels", type=Path, help="Manual independent ball-return labels for a regression fixture")
     args = parser.parse_args()
+    if args.captures:
+        report = summarize_captures(args.session, args.min_speed_mps)
+        replay = json.loads(args.replay_report.read_text()) if args.replay_report else None
+        if args.fixture_out:
+            if not args.ball_labels:
+                parser.error("--fixture-out requires independently supplied --ball-labels")
+            labels = json.loads(args.ball_labels.read_text())
+            fixture = {"schema_version": 1, "sensor": report["sensor"], "captures": []}
+            for item in report["captures"]:
+                capture = item["capture"]
+                suffix = capture["capture_id"].rsplit("-", 1)[-1]
+                label = labels[suffix]
+                frames = []
+                for frame in item["frames"]:
+                    points = []
+                    for point in frame["points"]:
+                        if not all(isinstance(point.get(axis), (float, int)) for axis in ("x", "y", "z", "radial_velocity")):
+                            continue
+                        is_ball = (label["first_frame"] <= frame["frame_number"] <= label["last_frame"]
+                                   and label["min_radial_speed_mps"] <= point["radial_velocity"] <= label["max_radial_speed_mps"])
+                        points.append([point["x"], point["y"], point["z"], point["radial_velocity"], point.get("snr_db"), is_ball])
+                    frames.append({"frame_number": frame["frame_number"], "points": points})
+                fixture["captures"].append({"name": "capture_" + str(len(fixture["captures"]) + 1),
+                    "annotation": {key: capture["annotation"][key] for key in ("speed", "elevation", "direction")}, "frames": frames})
+            args.fixture_out.write_text(json.dumps(fixture, separators=(",", ":")) + "\n")
+        if args.out:
+            args.out.write_text(json.dumps(report, indent=2) + "\n")
+        for index, item in enumerate(report["captures"], 1):
+            capture = item["capture"]
+            if args.capture_id and args.capture_id not in (capture["capture_id"], capture["capture_id"].rsplit("-", 1)[-1]):
+                continue
+            print(f"\nCAPTURE {index}: {capture['capture_id']} {capture['annotation']} old balls={capture['confirmed_balls']}")
+            print(f"Frames {capture['first_frame']}–{capture['last_frame']}; moving returns={len(item['moving_points'])}")
+            if replay:
+                revised = [attempt for attempt in replay["attempts"] if attempt.get("shot") and
+                           capture["first_frame"] <= attempt["report"]["start_frame"] <= capture["last_frame"]]
+                for attempt in revised:
+                    proof = attempt["report"].get("selected_club_evidence") or {}
+                    print(f"  REPLAY speed={attempt['shot']['speed_mps']:.2f} m/s direction={attempt['shot']['direction_deg']:.2f}° "
+                          f"elevation={attempt['shot']['elevation_deg']:.2f}° mode={proof.get('validation_mode')} "
+                          f"club_reach={proof.get('observed_club_reach_m')} ball_extent={proof.get('candidate_extent_m')} "
+                          f"reach_sigma={proof.get('beyond_club_reach_sigma')} concurrent_sigma={proof.get('concurrent_frontier_significance')} "
+                          f"analysis_ms={attempt['report'].get('analysis_elapsed_ms'):.2f}")
+            if not args.summary_only:
+                for point in item["moving_points"]:
+                    x, y, z = point["xyz"]
+                    print(f"  {point['frame']:6} xyz=({x:+.3f},{y:.3f},{z:+.3f}) r={point['range_m']:.3f} "
+                          f"v={point['radial_velocity']:+.3f} snr={point['snr_db']} {point['old_point_rejection'] or ''}")
+            paths = [path for path in item["paths"] if path["samples"] >= 3]
+            paths.sort(key=lambda path: (path["max_range_m"], path["samples"]), reverse=True)
+            shown = set()
+            for path in paths[:12] + [path for path in paths if path["selected"]]:
+                if path["id"] in shown:
+                    continue
+                shown.add(path["id"])
+                fit = path["fit"] or {}
+                print(f"  PATH {path['id']} {'SELECTED' if path['selected'] else ''}: {path['samples']} points "
+                      f"{path['first_frame']}–{path['last_frame']} r={path['start_range_m']:.3f}→{path['end_range_m']:.3f} "
+                      f"v={path['median_doppler_mps']:.3f} chi={fit.get('reduced_chi_squared')} "
+                      f"limit={fit.get('chi_squared_limit')} reason={path['rejection']}")
+        return
     report = summarize(args.session, args.before_s, args.after_s, args.min_speed_mps)
     if args.out:
         args.out.write_text(json.dumps(report, indent=2) + "\n")

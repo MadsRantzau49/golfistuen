@@ -74,9 +74,11 @@ shows **NO BALL DETECTED · ready for another swing**. A practice swing leaves t
 same turn armed and adds no stroke.
 
 The detector derives measurement scales and frame timing from the actual radar
-CFG. It tracks competing motion hypotheses, fits position and Doppler jointly with
-sensor uncertainty, and requires a separately diverging flight trajectory alongside
-the club. It has no fixed tee distance, ball-only range/lane, maximum XYZ residual
+CFG. It reconstructs outgoing paths backwards, fits position and Doppler jointly
+with sensor uncertainty, and chooses the furthest coherent path with independent
+evidence that it separates from the observed club envelope. Late tails can qualify
+after the club slows/disappears; short visible flights need concurrent separation
+evidence. It has no fixed tee distance, ball-only range/lane, maximum XYZ residual
 in metres, or arrival deadline from the first club motion. Quiet/missing frames
 resolve attempts; configurable resource bounds limit persistent clutter.
 
@@ -127,7 +129,7 @@ Each session contains:
   successful shots, and every `no_ball_detected` result. Completed swings include
   point rejection counts, complete candidate-track observations and each track's
   rejection reason (for example `insufficient_independent_observations`,
-  `no_independent_club_and_ball_tracks`, or
+  `no_independent_braking_club_and_launch_connection`, or
   `flight_model_inconsistent_with_sensor_uncertainty`). The selected fit includes
   its normalized residual, velocity uncertainty and club-detachment evidence. Connections,
   arm changes, frame gaps/timeouts, decode failures and service errors are logged.
@@ -173,6 +175,9 @@ own saved log window, even when no ball is detected. Then click your estimates:
 Other notes are optional and default to **None**. Descriptions auto-save and can
 be edited in shot history. Each JSON record includes timing, frame/byte references,
 the description and a detector-result summary. Local drafts survive disconnections.
+The form also shows the registered detector estimate live: speed, elevation and
+direction, independently of your own labels. Registered estimates persist in history
+and remain visible if later movement is unconfirmed.
 
 ```bash
 python3 tools/run_range.py --shot-notes

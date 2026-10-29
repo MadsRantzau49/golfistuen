@@ -1,4 +1,5 @@
 use super::*;
+use crate::processing::flight::GRAVITY_MPS2;
 use crate::radar::frame::PointSideInfo;
 
 fn sensor(period: f64) -> SensorModel {
@@ -274,5 +275,170 @@ fn invalid_points_do_not_arm_and_invalid_settings_fail_explicitly() {
     assert!(
         serde_json::from_str::<SwingConfig>(r#"{"club_clearance_m":0.75}"#).is_err(),
         "old geometry gates must not silently remain active"
+    );
+}
+
+#[test]
+fn annotated_captures_select_only_the_independently_labelled_ball_not_club_or_far_noise() {
+    let fixture: Value =
+        serde_json::from_str(include_str!("../../tests/fixtures/annotated_shots.json")).unwrap();
+    let model: SensorModel = serde_json::from_value(fixture["sensor"].clone()).unwrap();
+    for capture in fixture["captures"].as_array().unwrap() {
+        for variant in ["original", "ball_removed", "ball_only"] {
+            let mut detector = ShotDetector::new(model.clone(), SwingConfig::default());
+            let mut shots = Vec::new();
+            let mut reports = Vec::new();
+            let mut labelled = Vec::new();
+            for frame in capture["frames"].as_array().unwrap() {
+                let number = frame["frame_number"].as_u64().unwrap() as u32;
+                let mut points = Vec::new();
+                for row in frame["points"].as_array().unwrap() {
+                    let ball = row[5].as_bool().unwrap();
+                    let point = RadarPoint {
+                        x: row[0].as_f64().unwrap() as f32,
+                        y: row[1].as_f64().unwrap() as f32,
+                        z: row[2].as_f64().unwrap() as f32,
+                        radial_velocity: row[3].as_f64().unwrap() as f32,
+                        side_info: row[4].as_f64().map(|snr| PointSideInfo {
+                            snr_db: snr as f32,
+                            noise_db: 0.0,
+                        }),
+                    };
+                    if ball {
+                        labelled.push((
+                            number,
+                            [point.x as f64, point.y as f64, point.z as f64],
+                            point.radial_velocity as f64,
+                        ));
+                    }
+                    if (variant == "ball_removed" && ball) || (variant == "ball_only" && !ball) {
+                        continue;
+                    }
+                    points.push(point);
+                }
+                if let Some(DetectionEvent::BallDetected(shot)) = detector.update(&RadarFrame {
+                    frame_number: number,
+                    points,
+                }) {
+                    shots.push(shot);
+                }
+                if let Some(report) = detector.take_report() {
+                    reports.push(report);
+                }
+            }
+            if variant == "original" {
+                assert_eq!(
+                    shots.len(),
+                    1,
+                    "{}: {:?}",
+                    capture["name"],
+                    reports
+                        .iter()
+                        .map(|r| (&r["outcome"], &r["tracks"][0]))
+                        .collect::<Vec<_>>()
+                );
+                let report = reports
+                    .iter()
+                    .find(|r| r["outcome"] == "ball_detected")
+                    .unwrap();
+                let selected = report["selected_observations"].as_array().unwrap();
+                for observation in selected {
+                    let frame = observation["frame_number"].as_u64().unwrap() as u32;
+                    let position: [f64; 3] =
+                        serde_json::from_value(observation["position"].clone()).unwrap();
+                    let velocity = observation["radial_velocity"].as_f64().unwrap();
+                    assert!(
+                        labelled
+                            .iter()
+                            .any(|(n, p, v)| *n == frame && *p == position && *v == velocity),
+                        "{} selected a club/noise observation: {observation}",
+                        capture["name"]
+                    );
+                }
+                let last = selected.last().unwrap();
+                let position: [f64; 3] = serde_json::from_value(last["position"].clone()).unwrap();
+                let frontier = labelled
+                    .iter()
+                    .map(|(_, p, _)| norm(*p))
+                    .fold(0.0, f64::max);
+                assert!(
+                    (norm(position) - frontier).abs() < model.range_sigma(),
+                    "{} failed to reach the independent ball frontier",
+                    capture["name"]
+                );
+                assert_eq!(report["selection"], "furthest_valid_outgoing_path");
+            } else {
+                assert!(shots.is_empty(),"{} {variant} falsely registered: {:?}; {}",capture["name"],shots,
+                    json!(reports.iter().filter(|r|r["outcome"]=="ball_detected").map(|r|json!({"observations":r["selected_observations"],"evidence":r["selected_club_evidence"],"fit":r["selected_fit"]})).collect::<Vec<_>>()));
+            }
+        }
+    }
+}
+
+#[test]
+fn far_noise_walking_person_and_coherent_offset_club_echo_do_not_win_the_frontier() {
+    let mut frames = sequence(0.02, 15.0, [0.0, 1.0, 0.0], true, false, false);
+    for frame in &mut frames {
+        let t = frame.frame_number as f64 * 0.02;
+        frame
+            .points
+            .push(point([5.0, 30.0 + 2.0 * t, 1.0], [0.0, 2.0, 0.0]));
+    }
+    // A repeated Doppler observation at a stationary far range is not a path.
+    for frame in frames.iter_mut().skip(8).take(3) {
+        frame.points.push(RadarPoint {
+            x: 0.0,
+            y: 40.0,
+            z: 0.0,
+            radial_velocity: 15.0,
+            side_info: None,
+        });
+    }
+    let (shots, reports) = detect(&frames, 0.02, SwingConfig::default());
+    assert_eq!(shots.len(), 1);
+    let result = reports
+        .iter()
+        .find(|r| r["outcome"] == "ball_detected")
+        .unwrap();
+    let observations = result["selected_observations"].as_array().unwrap();
+    assert!(
+        observations
+            .iter()
+            .all(|sample| sample["position"][1].as_f64().unwrap() < 10.0)
+    );
+
+    let mut whiff = sequence(0.02, 15.0, [0.0, 1.0, 0.0], false, false, false);
+    for frame in &mut whiff {
+        if let Some(primary) = frame.points.first() {
+            let position = [primary.x as f64, primary.y as f64, primary.z as f64];
+            let shifted: [f64; 3] = std::array::from_fn(|i| position[i] + unit(position)[i] * 5.0);
+            frame.points.push(RadarPoint {
+                x: shifted[0] as f32,
+                y: shifted[1] as f32,
+                z: shifted[2] as f32,
+                radial_velocity: primary.radial_velocity,
+                side_info: None,
+            });
+        }
+    }
+    assert!(
+        detect(&whiff, 0.02, SwingConfig::default()).0.is_empty(),
+        "A farther coherent club echo is not an independently launched ball"
+    );
+}
+
+#[test]
+fn incomplete_search_budget_cannot_promote_a_partial_candidate_to_a_ball() {
+    let frames = sequence(0.02, 15.0, [0.0, 1.0, 0.0], true, false, false);
+    let config = SwingConfig {
+        max_backward_fits: 1,
+        ..SwingConfig::default()
+    };
+    let (shots, reports) = detect(&frames, 0.02, config);
+    assert!(shots.is_empty());
+    assert!(
+        reports
+            .iter()
+            .any(|report| report["search_budget_exhausted"] == true)
     );
 }
