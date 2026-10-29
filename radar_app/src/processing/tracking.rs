@@ -1,6 +1,7 @@
 use crate::radar::frame::{RadarFrame, RadarPoint};
+use serde::Serialize;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct TrackObservation {
     pub frame_number: u32,
     pub time_s: f64,
@@ -37,7 +38,7 @@ pub struct BallTrack {
     pub observations: Vec<TrackObservation>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct TrackingConfig {
     pub max_speed_mps: f32,
     pub position_tolerance_m: f32,

@@ -12,17 +12,21 @@ pub struct ShotOutput {
 }
 
 pub fn estimate_shot(track: &BallTrack) -> Option<ShotOutput> {
+    estimate_shot_with_reason(track).ok()
+}
+
+pub fn estimate_shot_with_reason(track: &BallTrack) -> Result<ShotOutput, &'static str> {
     if track.observations.len() < 3 {
-        return None;
+        return Err("fewer_than_three_observations");
     }
 
-    let first = track.observations.first()?;
-    let last = track.observations.last()?;
+    let first = track.observations.first().unwrap();
+    let last = track.observations.last().unwrap();
 
     let dt = last.time_s - first.time_s;
 
     if dt <= 0.0 {
-        return None;
+        return Err("non_positive_track_duration");
     }
 
     let vx = (last.x - first.x) / dt as f32;
@@ -33,11 +37,11 @@ pub fn estimate_shot(track: &BallTrack) -> Option<ShotOutput> {
     let speed = horizontal_speed.hypot(vz);
 
     if !speed.is_finite() || !(2.0..=80.0).contains(&speed) {
-        return None;
+        return Err("track_speed_outside_2_to_80_mps");
     }
 
     if vy <= 0.0 {
-        return None;
+        return Err("track_not_forward");
     }
 
     let displacement = (last.x - first.x)
@@ -45,13 +49,13 @@ pub fn estimate_shot(track: &BallTrack) -> Option<ShotOutput> {
         .hypot(last.z - first.z);
 
     if displacement < 0.3 {
-        return None;
+        return Err("track_displacement_below_0_3_m");
     }
 
     let direction = vx.atan2(vy).to_degrees();
     let elevation = vz.atan2(horizontal_speed).to_degrees();
 
-    Some(ShotOutput {
+    Ok(ShotOutput {
         shot_id: format!("shot-{:03}", track.id + 1),
         speed_mps: speed,
         direction_deg: direction,
@@ -98,10 +102,7 @@ mod tests {
     fn rejects_short_tracks() {
         let track = BallTrack {
             id: 0,
-            observations: vec![
-                observation(1, 0.0, 1.0, 0.0),
-                observation(2, 0.0, 1.2, 0.0),
-            ],
+            observations: vec![observation(1, 0.0, 1.0, 0.0), observation(2, 0.0, 1.2, 0.0)],
         };
 
         assert!(estimate_shot(&track).is_none());
