@@ -3,7 +3,7 @@ extends Node
 ## loading, preferences and transitions. The world is reused across menu and play.
 
 signal state_changed(state_name: String)
-enum State { LOADING, MENU, PLAYING, PAUSED, SETTINGS, EXITING, EDITING, HOLES, MATCH_SETUP }
+enum State { LOADING, MENU, PLAYING, PAUSED, SETTINGS, EXITING, EDITING, HOLES, MATCH_SETUP, RADAR_DEBUG }
 var state := State.LOADING
 var previous_state := State.MENU
 var range_scene: Node3D
@@ -21,6 +21,8 @@ var resume_state:=State.PLAYING
 var workspace_save_root:="user://holes"
 var clubhouse:ClubhouseStore
 var match_setup:MatchSetup
+var radar_debug:RadarDebugRange
+var radar_debug_auto_connect:=true
 
 
 func _ready() -> void:
@@ -84,6 +86,7 @@ func _world_ready() -> void:
 	if OS.get_cmdline_user_args().has("--smoke-holes"):
 		_run_hole_smoke.call_deferred()
 	if OS.get_cmdline_user_args().has("--builder"):open_builder()
+	if OS.get_cmdline_user_args().has("--radar-debug") or OS.get_cmdline_user_args().has("--radar-session"):open_radar_debug()
 	if OS.get_cmdline_user_args().has("--smoke-match"):_run_match_smoke.call_deferred()
 	if OS.get_cmdline_user_args().has("--capture-app"):
 		_capture_requested.call_deferred()
@@ -100,6 +103,7 @@ func show_menu() -> void:
 	_hide_library()
 	_hide_match_setup()
 	_hide_workspace()
+	_hide_radar_debug()
 	range_scene.show();range_scene.process_mode=Node.PROCESS_MODE_INHERIT;active_mode=range_scene
 	_sync_active_environment()
 	range_scene.camera.current=true
@@ -114,6 +118,7 @@ func show_menu() -> void:
 		menu.holes_requested.connect(show_holes)
 		menu.match_requested.connect(open_match_setup)
 		menu.resume_requested.connect(resume_match)
+		menu.radar_debug_requested.connect(open_radar_debug)
 	menu.show()
 	menu.resume_button.visible=clubhouse.has_active()
 	menu.play_button.grab_focus()
@@ -128,6 +133,7 @@ func enter_range() -> void:
 	_clear_pause()
 	_hide_library();_hide_workspace()
 	_hide_match_setup()
+	_hide_radar_debug()
 	range_scene.show();range_scene.process_mode=Node.PROCESS_MODE_INHERIT;active_mode=range_scene
 	_sync_active_environment()
 	range_scene.camera.current=true
@@ -175,7 +181,7 @@ func open_settings(tab_index:=0) -> void:
 	if state in [State.LOADING,State.SETTINGS]:
 		return
 	previous_state=state
-	if state in [State.PLAYING,State.EDITING]:
+	if state in [State.PLAYING,State.EDITING,State.RADAR_DEBUG]:
 		active_mode.set_interactive(false,false)
 	settings_panel=PinewaterSettingsPanel.new()
 	settings_panel.initial_tab=tab_index
@@ -187,7 +193,7 @@ func open_settings(tab_index:=0) -> void:
 func close_settings() -> void:
 	_close_settings()
 	_set_state(previous_state)
-	if state in [State.PLAYING,State.EDITING]:
+	if state in [State.PLAYING,State.EDITING,State.RADAR_DEBUG]:
 		active_mode.set_interactive(true,false)
 	elif state == State.MENU and menu:
 		menu.play_button.grab_focus()
@@ -246,6 +252,7 @@ func _unhandled_key_input(event: InputEvent) -> void:
 				State.PAUSED: _resume_active()
 				State.SETTINGS: close_settings()
 				State.HOLES: show_menu()
+				State.RADAR_DEBUG: show_menu()
 				State.MATCH_SETUP:
 					if match_setup and match_setup.step==1:match_setup.step=0;match_setup._show_step()
 					else:show_menu()
@@ -350,6 +357,7 @@ func _resume_active()->void:
 
 
 func show_holes()->void:
+	_hide_radar_debug()
 	_hide_match_setup()
 	_close_settings();_clear_pause();_hide_workspace();_hide_library()
 	if menu:menu.hide()
@@ -394,6 +402,7 @@ func _ensure_workspace()->bool:
 
 
 func _activate_workspace()->void:
+	_hide_radar_debug()
 	_hide_match_setup()
 	_close_settings();_clear_pause();_hide_library()
 	if menu:menu.hide()
@@ -443,12 +452,29 @@ func _hide_match_setup()->void:
 
 
 func open_match_setup(selected:HoleDefinition=null)->void:
+	_hide_radar_debug()
 	_close_settings();_clear_pause();_hide_library();_hide_workspace();_hide_match_setup()
 	if menu:menu.hide()
 	range_scene.show();range_scene.process_mode=Node.PROCESS_MODE_INHERIT;range_scene.set_interactive(false,true);range_scene.camera.current=true;active_mode=range_scene;_sync_active_environment()
 	match_setup=MatchSetup.new();match_setup.store=clubhouse;match_setup.hole_store=workspace.store if workspace else HoleStore.new(workspace_save_root);match_setup.selected_hole=selected
 	ui_layer.add_child(match_setup);match_setup.back_requested.connect(show_menu);match_setup.start_requested.connect(start_match)
 	_set_state(State.MATCH_SETUP);_reveal()
+
+
+func _hide_radar_debug()->void:
+	if radar_debug:
+		radar_debug.set_interactive(false);radar_debug.hide();radar_debug.process_mode=Node.PROCESS_MODE_DISABLED
+
+
+func open_radar_debug()->void:
+	if state==State.LOADING:return
+	_close_settings();_clear_pause();_hide_library();_hide_workspace();_hide_match_setup()
+	if menu:menu.hide()
+	range_scene.set_interactive(false,false);range_scene.hide();range_scene.process_mode=Node.PROCESS_MODE_DISABLED
+	if radar_debug==null:
+		radar_debug=RadarDebugRange.new();radar_debug.auto_connect=radar_debug_auto_connect;radar_debug.menu_requested.connect(show_menu);add_child(radar_debug)
+	radar_debug.show();radar_debug.process_mode=Node.PROCESS_MODE_INHERIT;radar_debug.set_interactive(true)
+	active_mode=radar_debug;_set_state(State.RADAR_DEBUG);_reveal()
 
 
 func start_match(competition:LocalGolfMatch,pending:Dictionary={})->void:

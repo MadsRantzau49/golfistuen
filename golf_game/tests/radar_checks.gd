@@ -73,6 +73,13 @@ func _run()->void:
 	check(not range_scene.hud.debug_controls.visible and range_scene.hud.radar_controls.visible,"Real mode shows live controls")
 	range_scene.hud.request_launch()
 	check(not range_scene.active,"Space/manual launch cannot create simulated shots in Real mode")
+	_send({"type":"detection","arm_id":arm,"state":"swing_detected"});await _frames()
+	check(range_scene.hud.radar_status.text.contains("SWING DETECTED") and not range_scene.active,"Swing alone shows confirmation progress without launching")
+	_send({"type":"detection","arm_id":arm,"state":"no_ball_detected"});await _frames()
+	check(range_scene.hud.radar_status.text.contains("NO BALL DETECTED") and not range_scene.active,"Practice swing reports no ball without launching")
+	check(range_scene.radar_source.arm_id==arm,"No-ball result preserves the ready turn")
+	_send({"type":"detection","arm_id":"stale-turn","state":"swing_detected"});await _frames()
+	check(range_scene.hud.radar_status.text.contains("NO BALL DETECTED"),"Stale detection status cannot overwrite the current turn")
 	# Real TCP fragmentation, then coalesced duplicate and stale messages.
 	var bytes:PackedByteArray=(JSON.stringify(_shot(arm,"live-test-1"))+"\n").to_utf8_buffer()
 	remote.put_data(bytes.slice(0,15));await _frames(2)

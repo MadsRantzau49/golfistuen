@@ -107,6 +107,7 @@ demo_program/data/plots/*
 
 # New local workbench captures (existing flat logs and analyzer fixtures are preserved)
 logs/sessions/
+**/logs/radar-live/
 
 # Downloaded TI installers and extracted installer files stay local.
 # Keep lightweight project tools versioned.

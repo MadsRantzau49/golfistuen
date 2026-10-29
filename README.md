@@ -65,8 +65,88 @@ The game reconnects automatically; paused/busy/disconnected shots are not saved
 for a future turn. Debug mode keeps the sliders and Space-to-launch controls.
 
 `spin_rpm` remains zero because the current Rust estimator does not measure spin.
-Speed/direction/elevation use the existing tracking estimator, now run on live
-frames. The physical target line is radar +Y; in-game aim rotates that launch line.
+Speed/direction/elevation come from a joint position/Doppler flight fit on live
+frames. The default physical target line is radar +Y; in-game aim rotates that launch line.
+
+Shot detection requires **swing → separate ball flight**. The game shows
+**SWING DETECTED · checking for ball…**, then either plays the confirmed ball or
+shows **NO BALL DETECTED · ready for another swing**. A practice swing leaves the
+same turn armed and adds no stroke.
+
+The detector derives measurement scales and frame timing from the actual radar
+CFG. It tracks competing motion hypotheses, fits position and Doppler jointly with
+sensor uncertainty, and requires a separately diverging flight trajectory alongside
+the club. It has no fixed tee distance, ball-only range/lane, maximum XYZ residual
+in metres, or arrival deadline from the first club motion. Quiet/missing frames
+resolve attempts; configurable resource bounds limit persistent clutter.
+
+`radar_app/configs/swing.json` contains statistical confidence/evidence settings,
+sensor-array calibration, physical ball parameters and resource limits. Pass it
+as the final argument:
+
+```bash
+cargo run --release --manifest-path radar_app/Cargo.toml -- live \
+  radar_app/configs/golf.cfg /dev/ttyUSB0 /dev/ttyUSB1 0.0.0.0:8765 \
+  radar_app/configs/swing.json
+```
+
+Defaults describe an IWR6843ISK with +Y forward/+Z up. The array uncertainty and
+mounting axes are explicit settings; adjust them for other hardware/mounting.
+See [`radar_app/DETECTION.md`](radar_app/DETECTION.md) for the model, configuration
+assumptions, recorded-shot analysis, replay commands and measurement limitations.
+Rebuild/relaunch the game to include the detection status text in older packages.
+
+### Always-on live debugging
+
+Every Rust `live` launch automatically creates a new recording directory and
+prints its **absolute path** at startup:
+
+```text
+Always-on radar debug recording: /.../logs/radar-live/<session>/
+```
+
+The default is `logs/radar-live/` relative to the directory where you launch the
+command. Set `RADAR_LOG_DIR` to choose a fixed location, for example:
+
+```bash
+RADAR_LOG_DIR=/home/rantzau/golfistuen/logs/radar-live \
+cargo run --release --manifest-path radar_app/Cargo.toml -- live \
+  radar_app/configs/golf.cfg /dev/ttyUSB0 /dev/ttyUSB1 0.0.0.0:8765 \
+  radar_app/configs/swing.json
+```
+
+Each session contains:
+
+- **`raw-000001.dat`, …:** exact incoming data-UART bytes, including noise,
+  malformed packets, club returns and points rejected by every filter. Recording
+  continues through cooldowns and while the game is disconnected or unarmed.
+  This provides continuous before/after-swing context, rather than saving only
+  successful shots. Segments concatenate in numeric order to recover the stream.
+- **`events-000001.jsonl`, …:** timestamped UART reads, every decoded frame and all
+  its XYZ/Doppler/SNR/noise values, point-gate rejection reasons, swing IDs, arm IDs,
+  successful shots, and every `no_ball_detected` result. Completed swings include
+  point rejection counts, complete candidate-track observations and each track's
+  rejection reason (for example `insufficient_independent_observations`,
+  `no_independent_club_and_ball_tracks`, or
+  `flight_model_inconsistent_with_sensor_uncertainty`). The selected fit includes
+  its normalized residual, velocity uncertainty and club-detachment evidence. Connections,
+  arm changes, frame gaps/timeouts, decode failures and service errors are logged.
+  Attempts interrupted by reconnects, disarming or frame loss are saved as
+  `aborted` with their partial tracks and reset reason.
+- **`session.json` and `radar.cfg`:** the actual detector/tracker settings,
+  frame period, rejection thresholds, ports and radar configuration for that run.
+
+`no_ball_detected` is the detector's decision, **not proof that no ball was hit**.
+Use the raw data and rejection reasons to investigate missed real hits. The
+terminal also prints a per-swing summary with candidate counts and rejection
+reasons. Share the whole session directory when reporting a detection problem.
+
+Raw and event files rotate at 64 MiB without overwriting older segments or sessions;
+old recordings are retained until you remove/archive them. Files are written
+without userspace buffering and synced at completed/aborted swings, so normal
+Ctrl+C/SIGTERM termination retains written frames and bytes. An abruptly stopped
+attempt may have a `swing_started` event without a final result; its radar data is
+still recorded. A recording-write failure is reported as a service error.
 
 Software checks (no radar required):
 
@@ -79,6 +159,28 @@ python3 tools/run_range.py --check        # Includes live TCP -> game checks
 See [the live connection contract](golf_game/README.md#live-radar-connection) for
 readiness, framing and reconnect details. Existing packaged executables must be
 rebuilt to include the new input modes.
+
+## 3D radar debug range in Pinewater
+
+The game's main menu now includes **Radar debug range · 3D capture**. It displays
+the raw radar point cloud as a replayable 3D movie, including background/person/club
+returns and accepted/rejected candidate tracks. Connect to the existing Rust live
+service, or open a saved recording folder without hardware. You can orbit, pan,
+scrub, slow down, step frames, click individual points and inspect rejection/fit
+diagnostics for every attempt. Saved sessions can also be browsed over the LAN.
+
+**Mark live hit** / **Dry swing** preserves operator labels and a three-second
+window even when the detector never triggers. Export a portable JSON clip to share
+the original measurements and diagnostics. Pausing playback keeps capture running.
+
+```bash
+python3 tools/run_range.py --radar-debug
+python3 tools/run_range.py --radar-session radar_app/logs/radar-live/SESSION
+```
+
+See [`golf_game/docs/RADAR_DEBUG.md`](golf_game/docs/RADAR_DEBUG.md) for controls,
+point/track colors, saved-session browsing, limits and the debugging workflow.
+Restart the updated Rust service and rebuild/relaunch older packaged games.
 
 ## Legacy Python radar dashboard
 

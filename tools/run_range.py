@@ -115,6 +115,8 @@ def main() -> int:
     parser.add_argument("--shot", type=Path, help="Launch a shot JSON file; spin_rpm is signed left/right side spin")
     parser.add_argument("--fullscreen", action="store_true", help="Start the game fullscreen")
     parser.add_argument("--range", action="store_true", help="Skip the main menu during development")
+    parser.add_argument("--radar-debug", action="store_true", help="Open the raw 3D radar debug range")
+    parser.add_argument("--radar-session", type=Path, help="Open a local radar recording folder in the 3D debug range")
     args = parser.parse_args()
     if args.shot and not args.shot.is_file():
         parser.error(f"Shot file does not exist: {args.shot}")
@@ -129,7 +131,7 @@ def main() -> int:
     if result:
         return result
     if args.check:
-        for script in ("range_checks.gd", "application_checks.gd", "camera_checks.gd", "hole_checks.gd", "hole_workspace_checks.gd", "hole_app_checks.gd", "match_checks.gd", "match_app_checks.gd", "radar_checks.gd"):
+        for script in ("range_checks.gd", "application_checks.gd", "camera_checks.gd", "hole_checks.gd", "hole_workspace_checks.gd", "hole_app_checks.gd", "match_checks.gd", "match_app_checks.gd", "radar_checks.gd", "radar_debug_checks.gd"):
             result = run(command + ["--headless", "--script", f"res://tests/{script}"], timeout=120)
             if result:
                 return result
@@ -143,6 +145,10 @@ def main() -> int:
         user_args.extend(["--shot", str(args.shot.resolve())])
     if args.range:
         user_args.append("--range")
+    if args.radar_debug:
+        user_args.append("--radar-debug")
+    if args.radar_session:
+        user_args.extend(["--radar-session", str(args.radar_session.resolve())])
     if user_args:
         command.extend(["--"] + user_args)
     print("Opening Pinewater. Choose Enter the range to play.", flush=True)

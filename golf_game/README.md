@@ -309,6 +309,7 @@ passes accepted payloads to `receive_shot(payload)`. The transport is UTF-8
 {"type":"status","protocol":1,"radar_ready":true,"arm_id":null}
 {"type":"ready","ready":true,"arm_id":"unique-turn-token"}
 {"type":"status","protocol":1,"radar_ready":true,"arm_id":"unique-turn-token"}
+{"type":"detection","arm_id":"unique-turn-token","state":"swing_detected"}
 {"type":"shot","arm_id":"unique-turn-token","shot":{"shot_id":"live-session-1","speed_mps":42.0,"direction_deg":3.0,"elevation_deg":30.0,"spin_rpm":0.0}}
 {"type":"ready","ready":false,"arm_id":""}
 ```
@@ -322,6 +323,15 @@ tokens, and revokes readiness during flight, turn delays, scorecards, relief,
 pause, settings, menus, and frame loss. Pausing disconnects immediately. A broken
 connection retries automatically; shots are never replayed on reconnect or queued
 for later turns. A game heartbeat missing for three seconds drops that client.
+
+The detector first requires motion preceding launch, then confirms a separate,
+diverging outgoing flight using sensor-normalized tracking and independent club
+evidence. `detection` messages carry `swing_detected` or
+`no_ball_detected`, scoped to the current arm. Status heartbeats also carry
+`detection_state` (`waiting_for_swing`, `swing_detected`, or `no_ball_detected`).
+A no-ball result displays a retry indication, preserves the arm and adds no stroke;
+only a confirmed `shot` launches the game. See `radar_app/DETECTION.md` and the root
+README for sensor calibration, the optional `swing.json` settings and recorded-session replay.
 
 Rust prints each delivered shot as one JSON line to stdout; configuration and
 connection diagnostics go to stderr. The underlying direct JSON/file API remains
@@ -345,6 +355,21 @@ surface sampler. On the driving range, water-hazard rules and scenery impacts ar
 not scored. Custom holes add water/OOB penalties and trunk deflections through the
 shared custom-hole simulator; see the Hole Studio guide.
 Cameras, distance-unit preferences and graphics settings cannot alter shot physics.
+
+## Radar debug range
+
+Choose **Radar debug range · 3D capture** in the main menu for raw 3D radar movies,
+including club/person/background returns and failed attempts. It supports live
+capture, remote session browsing, local recording folders, frame stepping/scrubbing,
+slow motion, point inspection and candidate/model overlays. Mark actual hits and
+dry swings to preserve operator labels even when detection never triggered, then
+export a portable clip for analysis. This instrument mode evaluates consecutive
+attempts independently of gameplay turn arming and adds no golf strokes.
+
+See [`docs/RADAR_DEBUG.md`](docs/RADAR_DEBUG.md) for the complete workflow and
+controls. `run_range.py --radar-debug` opens it directly; `--radar-session PATH`
+opens an existing local recording. The standard checks and native release builder
+include `radar_debug_checks.gd`.
 
 ## Verification and visual review
 

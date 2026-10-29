@@ -18,6 +18,7 @@ var endpoint := ""
 var sequence := 0
 var session := str(Time.get_ticks_usec())
 var seen: Dictionary = {}
+var detection_state := "waiting_for_swing"
 
 
 func _ready() -> void:
@@ -65,6 +66,7 @@ func _process(_delta: float) -> void:
 	var ready: bool = radar_ready and target.is_live_ready()
 	if ready and arm_id.is_empty():
 		sequence+=1;arm_id="%s-%d"%[session,sequence]
+		detection_state="waiting_for_swing"
 	if not ready:arm_id="";acknowledged_arm=""
 	if now-last_send>=250 or (arm_id!=acknowledged_arm and now-last_send>=50):
 		var message := JSON.stringify({"type":"ready","ready":ready,"arm_id":arm_id})+"\n"
@@ -73,6 +75,8 @@ func _process(_delta: float) -> void:
 	if not radar_ready:hud.set_radar_status("Radar connected · waiting for frames",false)
 	elif not target.is_live_ready():hud.set_radar_status("Wait · ball / turn not ready",false)
 	elif arm_id!=acknowledged_arm:hud.set_radar_status("Preparing radar…",false)
+	elif detection_state=="swing_detected":hud.set_radar_status("SWING DETECTED · checking for ball…",false)
+	elif detection_state=="no_ball_detected":hud.set_radar_status("NO BALL DETECTED · ready for another swing",true)
 	else:hud.set_radar_status("READY — SHOOT NOW",true)
 
 
@@ -82,7 +86,12 @@ func _handle_message(message: Variant, now: int) -> void:
 		last_status=now
 		radar_ready=message.get("radar_ready")==true and message.get("protocol")==1
 		acknowledged_arm=str(message.get("arm_id",""))
+		if message.get("arm_id")==arm_id:
+			detection_state=str(message.get("detection_state","waiting_for_swing"))
 		if not radar_ready:arm_id="";acknowledged_arm=""
+	elif message.get("type")=="detection":
+		if not arm_id.is_empty() and message.get("arm_id")==arm_id and target.is_live_ready():
+			detection_state=str(message.get("state","waiting_for_swing"))
 	elif message.get("type")=="shot":
 		var payload: Variant = message.get("shot")
 		if arm_id.is_empty() or message.get("arm_id")!=arm_id or not target.is_live_ready():return
@@ -92,7 +101,8 @@ func _handle_message(message: Variant, now: int) -> void:
 		seen[id]=true
 		if seen.size()>256:seen.erase(seen.keys()[0])
 		arm_id="";acknowledged_arm=""
-		if target.receive_shot(payload):hud.show_message("Real shot registered — playing your shot!")
+		detection_state="waiting_for_swing"
+		if target.receive_shot(payload):hud.show_message("Ball detected — playing your shot!")
 
 
 func _retry(now: int) -> void:
@@ -103,6 +113,7 @@ func _retry(now: int) -> void:
 func _disconnect() -> void:
 	if peer:peer.disconnect_from_host()
 	peer=null;buffer.clear();arm_id="";acknowledged_arm="";radar_ready=false;last_status=0;last_send=0
+	detection_state="waiting_for_swing"
 
 
 func _exit_tree() -> void:

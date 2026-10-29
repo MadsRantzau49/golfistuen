@@ -134,6 +134,32 @@ shots cannot fire later. The current radar estimator supplies speed, direction
 and elevation; it does not measure spin yet. Replay never adds another stroke.
 Your selected mode and radar address are saved on this computer.
 
+RADAR DEBUG RANGE — 3D CAPTURE
+
+Choose Radar debug range from the main menu to inspect actual radar measurements.
+Connect to the same radar host/port used by Real mode. Raw points include background,
+people, club returns and reflections; they are sparse measurements, not camera video.
+
+Right-drag to orbit, middle-drag to pan, and use the wheel to zoom. Top/Side/Front
+and Fit change the camera. Space plays/pauses; Left/Right step frames. Use the
+timeline and slow-motion selector to inspect each attempt, including unconfirmed
+hits. Click a point for coordinates, Doppler, SNR and its point-gate reason. Choose
+a candidate trajectory to see its recorded rejection and fit diagnostics.
+
+Green is the selected ball track, purple is inferred club evidence, orange is the
+inspected candidate and gold is the fitted model. Raw unclassified points are not
+automatically labelled objects. The metre grid is at radar Z=0, not a calibrated floor.
+
+Mark live hit (M) or Dry swing immediately after an attempt to preserve a label and
+the last three seconds even if detection never triggered. A connected mark is also
+saved in the radar recording. Export selected clip saves a portable JSON movie.
+Open clip replays it on another computer; Open folder loads a recording's event files.
+The source selector/refresh button browses recordings on the radar computer over LAN.
+
+Pausing playback keeps capture running. Follow live (L) returns to current frames;
+All loaded frames browses the whole loaded buffer/recording. The debug mode does
+not launch golf shots or add strokes. Escape returns to the main menu.
+
 SIDE SPIN
 Use the Side spin slider for left/right curvature. Negative RPM bends left,
 positive RPM bends right, and zero is neutral. This is independent of the initial

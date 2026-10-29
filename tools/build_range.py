@@ -148,6 +148,7 @@ def main() -> int:
         checked(command + ["--script", "res://tests/match_checks.gd"])
         checked(command + ["--script", "res://tests/match_app_checks.gd"])
         checked(command + ["--script", "res://tests/radar_checks.gd"])
+        checked(command + ["--script", "res://tests/radar_debug_checks.gd"])
     install_templates(args.target)
     manifest = {"application": "Pinewater", "version": APP_VERSION, "engine": version, "artifacts": []}
     for target in args.target:
