@@ -115,10 +115,24 @@ Results show real shots, penalties and automatic strokes separately.
 Replay never changes the score. Completed gross scores and rule snapshots are
 retained in local history, ready for future scoring features.
 
-ON THE RANGE
-Choose Driver, 7 Iron or Wedge. Adjust the shot settings and click Launch shot.
-The built-in simulator produces the same speed/direction/elevation/side-spin event that
-a radar connection will eventually provide.
+DEBUG / REAL SHOT INPUT
+In "The next shot", choose Debug for simulated shots or Real for live radar.
+This works on the range, custom holes and in local competitive golf.
+
+Debug: choose Driver, 7 Iron or Wedge, adjust the sliders and click Launch shot
+or press Space.
+
+Real: start the Rust radar app in live mode on the radar computer. Enter its IP
+address (127.0.0.1 if it runs on this computer) and port 8765 in the game, then
+click Connect / reconnect. Wait for "READY — SHOOT NOW" before swinging.
+Aim in the game and hit your real ball: a registered shot fires automatically.
+In local golf, the highlighted player receives the shot. Wait for the next ready
+indication before shooting again. Mode changes are disabled while a shot is busy.
+
+The game reconnects automatically if the connection drops. Paused, busy or old
+shots cannot fire later. The current radar estimator supplies speed, direction
+and elevation; it does not measure spin yet. Replay never adds another stroke.
+Your selected mode and radar address are saved on this computer.
 
 SIDE SPIN
 Use the Side spin slider for left/right curvature. Negative RPM bends left,
@@ -126,7 +140,7 @@ positive RPM bends right, and zero is neutral. This is independent of the initia
 launch direction. There is no backspin/topspin input. The flight guide and replay
 use the same side-spin model as the live shot.
 
-Space       Launch a shot
+Space       Launch a simulated shot (Debug mode)
 1 / 2 / 3   Driver / iron / wedge
 R           Range: fresh ball; solo test: restart; competition: confirm pickup
 P           Replay the last shot

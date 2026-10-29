@@ -1,6 +1,6 @@
 extends Node3D
 ## Composition root: wires input, domain model, scenery, and presentation.
-## Call receive_shot(payload) from a future transport adapter or use ShotSource.
+## Debug UI and live radar share the shot/domain lifecycle.
 
 signal ready_for_play
 signal loading_progress(value: float, message: String)
@@ -23,6 +23,7 @@ var preview_visible := false
 var preview_mesh: MeshInstance3D
 var aim_mesh: MeshInstance3D
 var course_map:ShotCourseMap
+var radar_source:RadarShotSource
 
 
 func _ready() -> void:
@@ -61,6 +62,7 @@ func _ready() -> void:
 	preview_mesh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(preview_mesh)
 	_build_aim_line()
+	radar_source=RadarShotSource.new();radar_source.target=self;radar_source.hud=hud;add_child(radar_source)
 	hud.visible=interactive
 	apply_preferences()
 	_handle_automation()
@@ -74,6 +76,7 @@ func _ready() -> void:
 func _finish_loading() -> void:
 	await world.build_async()
 	course_map.configure_range(world.surface)
+	staged_loading=false
 	ready_for_play.emit()
 
 
@@ -84,6 +87,7 @@ func set_interactive(enabled: bool, menu_camera := false) -> void:
 	visual.tracking_enabled = enabled and last_shot != null
 	visual.locator.visible=enabled
 	if not enabled: visual.freeze_interpolation()
+	if not enabled and radar_source:radar_source._disconnect()
 
 
 func apply_preferences() -> void:
@@ -98,8 +102,12 @@ func apply_preferences() -> void:
 
 
 func receive_shot(payload: Dictionary) -> bool:
-	# Parsing and duplicate/busy handling are shared by demo and future network input.
+	if active:return false
 	return source.submit_payload(payload)
+
+
+func is_live_ready()->bool:
+	return interactive and not staged_loading and not active
 
 
 func _on_shot(shot: GolfShot) -> void:
@@ -147,11 +155,15 @@ func _physics_process(delta: float) -> void:
 		hud.set_busy(false)
 		hud.update_flight(model)
 		hud.record_result(model, replaying)
+		if GameSettings.get_value("shot_mode")=="Real":
+			camera.reset_tracking();visual.tracking_enabled=false;visual.reset();aim_mesh.visible=true
+			course_map.set_lie(Vector2(AlpineRange.TEE.x,AlpineRange.TEE.z),0)
 
 
 func _input(event: InputEvent) -> void:
 	if not interactive:
 		return
+	if get_viewport().gui_get_focus_owner() is LineEdit:return
 	if not event is InputEventKey or not event.pressed or event.echo:
 		return
 	match event.physical_keycode:

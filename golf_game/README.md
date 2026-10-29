@@ -3,8 +3,8 @@
 **An alpine golf escape by Golfistuen.** A native desktop game with a staged loading
 screen, scenic main menu, saved settings, a driving range, and an integrated hole
 builder with playable custom holes, and **1–6 player local competitive golf**. Radar is
-optional: built-in practice controls generate the same launch events as a future
-backend connection.
+optional: **Debug** provides simulated shots; **Real** launches live shots from
+the Rust radar app automatically, with connection and ready-to-shoot feedback.
 
 ## Play the native application
 
@@ -137,7 +137,7 @@ or `--rendering-method gl_compatibility`.
 
 | Key | Action |
 | --- | --- |
-| Space | Launch a simulated shot |
+| Space | Launch a simulated shot (Debug mode) |
 | 1 / 2 / 3 | Driver / iron / wedge |
 | R | Range: fresh ball; solo test: restart; competition: confirm pickup |
 | P | Replay without adding a history entry |
@@ -260,7 +260,7 @@ flowchart LR
     App[Application shell] --> Menu[Loading / menu / settings / pause]
     App --> Range[Driving range lifecycle]
     Demo[Practice UI / JSON file] --> Source[ShotSource]
-    Radar[Future WebSocket adapter] -.-> Source
+    Radar[Rust radar · live TCP] --> Source
     Source --> Contract[GolfShot · backend-owned values]
     Contract --> Range
     Range --> Model[BallFlight · 120 Hz]
@@ -270,13 +270,62 @@ flowchart LR
     Settings --> Visual
 ```
 
-A future WebSocket adapter extends `ShotSource` and calls `submit_payload(payload)`;
-connect its `shot_received` signal just like the demo source. The range also exposes
-`receive_shot(payload)`. Parsing success is distinct from game acceptance. The
-range runs one ball at a time and custom holes only launch while a turn is ready;
-these lifecycle rules do not filter launch values or require unique metadata IDs.
-Transport readiness, turn IDs, acknowledgements and reconnect/resume belong in
-the future integration layer.
+### Live radar connection
+
+From the repository root, start the Rust service:
+
+```bash
+cargo run --release --manifest-path radar_app/Cargo.toml -- live \
+  radar_app/configs/golf.cfg /dev/ttyUSB0 /dev/ttyUSB1 0.0.0.0:8765
+python3 tools/run_range.py
+```
+
+The CLI accepts `live [config.cfg] [command-port] [data-port] [bind-address:port]`.
+When run inside `radar_app/`, the default config is `configs/golf.cfg`; default
+UARTs are `/dev/ttyUSB0` at 115200 and `/dev/ttyUSB1` at 921600. Stop other apps
+using those UARTs first. The service configures/starts the radar, continuously
+decodes frames, detects candidates and tracks them, then selects one best valid
+shot from each short burst. It does not require recording a DAT file. The existing
+estimator supplies speed/direction/elevation; spin is currently unmeasured (zero).
+
+In the range, custom-hole play, or local golf, choose **Real · live radar** in
+**The next shot**. Enter the Rust computer's IP (or `127.0.0.1` on the same machine)
+and port `8765`, then click **Connect / reconnect**. Both mode and endpoint persist.
+The panel distinguishes connection attempts, waiting for radar frames, waiting for
+the ball/turn, and **READY — SHOOT NOW**. Aim in the game, then hit a real ball;
+receipt launches it immediately with the measured values, without pressing Space
+or confirming the shot. On the range a fresh ball is placed automatically after
+each result; local golf advances the normal player/lie/score lifecycle.
+
+**Debug · simulated shots** restores the existing launch sliders/presets and
+Space button. Mode changes are disabled while a ball is busy. Replay remains
+available in either mode and never adds a competitive stroke.
+
+`RadarShotSource` connects only for active, interactive Real-mode gameplay and
+passes accepted payloads to `receive_shot(payload)`. The transport is UTF-8
+**newline-delimited JSON over TCP**, one game per service, with these messages:
+
+```json
+{"type":"status","protocol":1,"radar_ready":true,"arm_id":null}
+{"type":"ready","ready":true,"arm_id":"unique-turn-token"}
+{"type":"status","protocol":1,"radar_ready":true,"arm_id":"unique-turn-token"}
+{"type":"shot","arm_id":"unique-turn-token","shot":{"shot_id":"live-session-1","speed_mps":42.0,"direction_deg":3.0,"elevation_deg":30.0,"spin_rpm":0.0}}
+{"type":"ready","ready":false,"arm_id":""}
+```
+
+The server sends status every 250 ms; `radar_ready` requires a valid decoded frame
+within the last second. The game heartbeats readiness every 250 ms and announces
+shoot-now only after the server echoes its current arm token. The server consumes
+that token once; repeating its heartbeat cannot launch another shot. A fresh token
+is required for the next playable turn. The adapter drops duplicate IDs and stale
+tokens, and revokes readiness during flight, turn delays, scorecards, relief,
+pause, settings, menus, and frame loss. Pausing disconnects immediately. A broken
+connection retries automatically; shots are never replayed on reconnect or queued
+for later turns. A game heartbeat missing for three seconds drops that client.
+
+Rust prints each delivered shot as one JSON line to stdout; configuration and
+connection diagnostics go to stderr. The underlying direct JSON/file API remains
+available independently of the live transport and its turn-token deduplication.
 
 ### Simulation scope
 
@@ -299,7 +348,13 @@ Cameras, distance-unit preferences and graphics settings cannot alter shot physi
 
 ## Verification and visual review
 
-`run_range.py --check` covers unrestricted backend input (including a 4000 m/s
+`run_range.py --check` includes actual TCP framing/automatic launch, readiness,
+busy/stale/duplicate delivery, pause/reconnect, frame loss, Debug/Real controls and
+live competitive stroke accounting. `python3 -m unittest tests.test_rust_live`
+also exercises the Rust CLI with emulated Linux serial UARTs, including CFG upload,
+fragmented binary packets, live shot estimation, one-shot arming and frame timeout.
+
+The other game checks cover unrestricted backend input (including a 4000 m/s
 regression), optional IDs/field aliases, launch axes, all presets,
 landing/rollout, busy events, preview agreement, replay, reset,
 startup/menu flow, UI launch, pause/resume, settings navigation, unit conversion,

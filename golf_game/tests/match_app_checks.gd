@@ -19,6 +19,7 @@ func _settle(controller:Node3D)->void:
 
 
 func _run()->void:
+	root.get_node("GameSettings").set_value("shot_mode","Debug",false)
 	var packed:=load("res://scenes/application.tscn") as PackedScene
 	var app:Node=packed.instantiate();var directory:="user://match-app-%d"%Time.get_ticks_msec()
 	app.workspace_save_root=directory.path_join("holes");root.add_child(app)

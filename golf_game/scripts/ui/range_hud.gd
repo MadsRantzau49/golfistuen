@@ -37,6 +37,11 @@ var last_model: BallFlight
 var context_label := "ALPINE RANGE"
 var match_mode:=false
 var relief_button:Button
+var mode_selector:OptionButton
+var debug_controls:VBoxContainer
+var radar_controls:VBoxContainer
+var radar_status:Label
+var guide_control:CheckButton
 
 
 func _ready() -> void:
@@ -49,6 +54,10 @@ func _ready() -> void:
 	_studio()
 	_metrics()
 	select_preset("Driver")
+	GameSettings.changed.connect(func(key:String,_value:Variant):
+		if key=="shot_mode":_apply_input_mode()
+	)
+	_apply_input_mode()
 
 
 func _process(delta: float) -> void:
@@ -93,19 +102,47 @@ func _studio() -> void:
 	var panel:=AppStyle.panel(root,-328,208 if match_mode else 190,-36,0)
 	panel.anchor_left=1
 	panel.anchor_right=1
+	panel.anchor_bottom=1
+	panel.offset_bottom=-145
+	var scroll:=ScrollContainer.new()
+	scroll.horizontal_scroll_mode=ScrollContainer.SCROLL_MODE_DISABLED
+	panel.add_child(scroll)
 	var column:=VBoxContainer.new()
+	column.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 	column.add_theme_constant_override("separation",8)
-	panel.add_child(column)
+	scroll.add_child(column)
 	var heading:=HBoxContainer.new()
 	column.add_child(heading)
-	var label:=AppStyle.label("LOCAL GOLF · SIMULATED INPUT" if match_mode else "PRACTICE, AT YOUR OWN PACE",9,AppStyle.GOLD)
+	var label:=AppStyle.label("SHOT INPUT · DEBUG / REAL",9,AppStyle.GOLD)
 	label.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 	heading.add_child(label)
 	heading.add_child(AppStyle.label("↗",17,AppStyle.GOLD))
 	column.add_child(AppStyle.label("The next shot",26,AppStyle.CREAM,true))
+	mode_selector=OptionButton.new()
+	mode_selector.add_item("Debug · simulated shots");mode_selector.add_item("Real · live radar")
+	mode_selector.item_selected.connect(func(index:int):GameSettings.set_value("shot_mode","Real" if index==1 else "Debug"))
+	column.add_child(mode_selector)
+	radar_controls=VBoxContainer.new();column.add_child(radar_controls)
+	radar_controls.add_child(AppStyle.label("RUST RADAR ADDRESS / PORT",9,AppStyle.MUTED))
+	var connection:=HBoxContainer.new();radar_controls.add_child(connection)
+	var host:=LineEdit.new();host.text=str(GameSettings.get_value("radar_host"));host.placeholder_text="127.0.0.1"
+	host.size_flags_horizontal=Control.SIZE_EXPAND_FILL;host.custom_minimum_size.x=110;connection.add_child(host)
+	var port:=SpinBox.new();port.min_value=1;port.max_value=65535;port.value=int(GameSettings.get_value("radar_port"));port.custom_minimum_size.x=95;connection.add_child(port)
+	var connect_button:=AppStyle.button("Connect / reconnect")
+	connect_button.pressed.connect(func():
+		GameSettings.set_value("radar_host",host.text.strip_edges())
+		GameSettings.set_value("radar_port",int(port.value))
+	)
+	radar_controls.add_child(connect_button)
+	radar_status=AppStyle.label("Connecting to radar…",16,AppStyle.GOLD)
+	radar_status.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART;radar_status.custom_minimum_size=Vector2(240,58)
+	radar_controls.add_child(radar_status)
+	var instructions:=AppStyle.label("Aim in the game, then hit a real ball when READY. Each registered shot launches automatically.",12,AppStyle.MUTED)
+	instructions.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART;radar_controls.add_child(instructions)
+	debug_controls=VBoxContainer.new();column.add_child(debug_controls)
 	var presets:=HBoxContainer.new()
 	presets.add_theme_constant_override("separation",6)
-	column.add_child(presets)
+	debug_controls.add_child(presets)
 	for preset_name in DemoShotSource.PRESETS:
 		var button:=AppStyle.button(preset_name)
 		button.custom_minimum_size.y=36
@@ -114,18 +151,18 @@ func _studio() -> void:
 		button.pressed.connect(select_preset.bind(preset_name))
 		preset_buttons[preset_name]=button
 		presets.add_child(button)
-	speed_slider=_slider(column,"Ball speed",5,85,.5,"m/s")
-	direction_slider=_slider(column,"Direction",-25,25,.5,"direction")
-	elevation_slider=_slider(column,"Elevation",0,65,.5,"angle")
-	spin_slider=_slider(column,"Side spin",-4000,4000,50,"spin")
+	speed_slider=_slider(debug_controls,"Ball speed",5,85,.5,"m/s")
+	direction_slider=_slider(debug_controls,"Direction",-25,25,.5,"direction")
+	elevation_slider=_slider(debug_controls,"Elevation",0,65,.5,"angle")
+	spin_slider=_slider(debug_controls,"Side spin",-4000,4000,50,"spin")
 	spin_slider.tooltip_text="Vertical-axis side spin only. Negative bends left; positive bends right."
 	launch_button=AppStyle.button("Launch shot     ↗",true)
 	launch_button.custom_minimum_size.y=48
 	launch_button.pressed.connect(request_launch)
-	column.add_child(launch_button)
+	debug_controls.add_child(launch_button)
 	var shortcut:=AppStyle.label("SPACE TO LAUNCH  ·  SIMULATED INPUT",9,AppStyle.MUTED)
 	shortcut.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER
-	column.add_child(shortcut)
+	debug_controls.add_child(shortcut)
 	shortcut.visible=not match_mode
 	var actions:=HBoxContainer.new()
 	actions.add_theme_constant_override("separation",8)
@@ -142,6 +179,7 @@ func _studio() -> void:
 	reset_button.pressed.connect(func():reset_requested.emit())
 	actions.add_child(reset_button)
 	var guide:=CheckButton.new()
+	guide_control=guide
 	guide.text="Flight guide"
 	guide.add_theme_color_override("font_color",AppStyle.MUTED)
 	guide.add_theme_font_size_override("font_size",12)
@@ -268,16 +306,30 @@ func select_preset(preset_name:String)->void:
 
 
 func request_launch()->void:
-	if not is_busy:launch_requested.emit(speed_slider.value,direction_slider.value,elevation_slider.value,spin_slider.value)
+	if not is_busy and GameSettings.get_value("shot_mode")=="Debug":launch_requested.emit(speed_slider.value,direction_slider.value,elevation_slider.value,spin_slider.value)
 
 
 func set_busy(busy:bool)->void:
 	is_busy=busy
-	launch_button.disabled=busy
+	launch_button.disabled=busy or GameSettings.get_value("shot_mode")=="Real"
+	mode_selector.disabled=busy
 	launch_button.text="A little flight time…" if busy else "Launch shot     ↗"
 	replay_button.disabled=busy or shot_count==0
 	if relief_button:relief_button.disabled=busy
 	status_label.text="●  Ball in flight" if busy else "●  Ready to play"
+
+
+func _apply_input_mode()->void:
+	var real:bool=GameSettings.get_value("shot_mode")=="Real"
+	mode_selector.select(1 if real else 0)
+	debug_controls.visible=not real;radar_controls.visible=real;guide_control.visible=not real
+	launch_button.disabled=is_busy or real
+	if real:preview_changed.emit(false)
+
+
+func set_radar_status(message:String,ready:bool)->void:
+	radar_status.text=message
+	radar_status.add_theme_color_override("font_color",Color("a8e6a0") if ready else AppStyle.GOLD)
 
 
 func update_flight(model:BallFlight)->void:

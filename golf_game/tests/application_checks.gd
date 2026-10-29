@@ -18,6 +18,7 @@ func check(condition:bool,message:String)->void:
 
 
 func _run()->void:
+	root.get_node("GameSettings").set_value("shot_mode","Debug",false)
 	_check_preferences()
 	var packed:=load("res://scenes/application.tscn") as PackedScene
 	if packed==null:

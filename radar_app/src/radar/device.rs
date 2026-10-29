@@ -54,7 +54,7 @@ impl RadarDevice {
                             )));
                         }
                         if response.lines().any(|line| line.trim() == "Done") {
-                            println!("\n{response}\n");
+                            eprintln!("\n{response}\n");
                             return Ok(());
                         }
                     }
@@ -99,5 +99,9 @@ impl RadarDevice {
 
     pub fn read_data(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
         self.data.read(buffer)
+    }
+
+    pub fn set_data_timeout(&mut self, timeout: Duration) -> Result<(), serialport::Error> {
+        self.data.set_timeout(timeout)
     }
 }

@@ -96,7 +96,10 @@ func _on_shot(shot:GolfShot)->void:
 	last_shot=shot;last_origin=origin;last_yaw=aim_yaw
 	_pending={"shot":shot.to_payload(),"origin":[origin.x,origin.y,origin.z],"yaw":aim_yaw}
 	_replays[match_state.current_player().id]=_pending.duplicate(true)
-	_save();_start_swing(shot,false)
+	_save()
+	if GameSettings.get_value("shot_mode")=="Real":
+		golfer.swing();_launch(shot,origin,aim_yaw,false)
+	else:_start_swing(shot,false)
 
 
 func _start_swing(shot:GolfShot,is_replay:bool)->void:
@@ -111,6 +114,10 @@ func replay()->void:
 
 func _can_act()->bool:
 	return interactive and match_state!=null and match_state.state==LocalGolfMatch.State.PLAYING and not in_motion and turn_delay<=0 and not is_instance_valid(completion) and attempt.state==HoleRound.State.READY
+
+
+func is_live_ready()->bool:
+	return _can_act()
 
 
 func receive_shot(payload:Dictionary)->bool:

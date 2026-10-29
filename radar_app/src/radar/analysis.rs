@@ -18,7 +18,7 @@ pub struct RecordingSummary {
     pub shot: Option<ShotOutput>,
 }
 
-fn select_shot(tracks: &[BallTrack]) -> Option<ShotOutput> {
+pub(crate) fn select_shot(tracks: &[BallTrack]) -> Option<ShotOutput> {
     tracks
         .iter()
         .filter_map(|track| {

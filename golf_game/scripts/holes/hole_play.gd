@@ -36,6 +36,7 @@ var aim_value:Label
 var completion:Control
 var competitive:=false
 var course_map:ShotCourseMap
+var radar_source:RadarShotSource
 
 
 func _ready()->void:
@@ -62,6 +63,7 @@ func _ready()->void:
 	preview_mesh=MeshInstance3D.new();preview_mesh.material_override=RangePalette.material(Color("e3dab2"),true);add_child(preview_mesh)
 	aim_mesh=MeshInstance3D.new();aim_mesh.material_override=RangePalette.material(AppStyle.GOLD,true);add_child(aim_mesh)
 	hud.visible=false
+	radar_source=RadarShotSource.new();radar_source.target=self;radar_source.hud=hud;add_child(radar_source)
 
 
 func start_hole(document:HoleDefinition)->void:
@@ -86,6 +88,7 @@ func set_active(value:bool)->void:
 	hud.visible=value;visual.locator.visible=value
 	if value:camera.current=true
 	else:visual.freeze_interpolation()
+	if not value and radar_source:radar_source._disconnect()
 
 
 func apply_preferences()->void:
@@ -97,7 +100,11 @@ func apply_preferences()->void:
 
 
 func receive_shot(payload:Dictionary)->bool:
-	return source.submit_payload(payload)
+	return source.submit_payload(payload) if is_live_ready() else false
+
+
+func is_live_ready()->bool:
+	return interactive and not in_motion and turn_delay<=0 and attempt!=null and attempt.state==HoleRound.State.READY and not is_instance_valid(completion)
 
 
 func _on_shot(shot:GolfShot)->void:
@@ -117,6 +124,7 @@ func _launch(shot:GolfShot,launch_origin:Vector3,yaw:float,is_replay:bool)->void
 	camera.begin_shot(origin+model.position,model.velocity)
 	hud.set_busy(true);aim_slider.editable=false;aim_mesh.visible=false;preview_mesh.visible=false
 	AudioDirector.play_strike();_refresh_score()
+	if not is_replay:hud.show_message("Shot registered — playing your shot!")
 	course_map.begin_shot(Vector2(origin.x,origin.z),yaw)
 
 
@@ -259,6 +267,7 @@ func _show_completion()->void:
 
 func _input(event:InputEvent)->void:
 	if not interactive or not event is InputEventKey or not event.pressed or event.echo:return
+	if get_viewport().gui_get_focus_owner() is LineEdit:return
 	match event.physical_keycode:
 		KEY_SPACE:hud.request_launch()
 		KEY_1:hud.select_preset("Driver")

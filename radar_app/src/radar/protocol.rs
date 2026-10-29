@@ -194,25 +194,24 @@ impl PacketDecoder {
     }
 
     pub fn next_packet(&mut self) -> Option<Vec<u8>> {
-        self.buffer
-            .windows(MAGIC_WORD.len())
-            .position(|window| window == MAGIC_WORD);
-
-        if self.buffer.len() < HEADER_SIZE {
-            return None;
+        loop {
+            let Some(start) = self.buffer.windows(MAGIC_WORD.len())
+                .position(|window| window == MAGIC_WORD) else {
+                // Retain a possible partial magic word across serial reads.
+                let discard = self.buffer.len().saturating_sub(MAGIC_WORD.len() - 1);
+                self.buffer.drain(..discard);
+                return None;
+            };
+            self.buffer.drain(..start);
+            if self.buffer.len() < HEADER_SIZE { return None; }
+            let packet_length = parse_header(&self.buffer)?.total_packet_len as usize;
+            if !(HEADER_SIZE..=1024 * 1024).contains(&packet_length) {
+                self.buffer.drain(..1);
+                continue;
+            }
+            if self.buffer.len() < packet_length { return None; }
+            return Some(self.buffer.drain(..packet_length).collect());
         }
-
-        let header = parse_header(&self.buffer)?;
-
-        let packet_length = header.total_packet_len as usize;
-
-        if self.buffer.len() < packet_length {
-            return None;
-        }
-
-        let packet: Vec<u8> = self.buffer.drain(..packet_length).collect();
-
-        return Some(packet);
     }
 }
 
@@ -241,6 +240,23 @@ fn decodes_packet_split_across_reads() {
     assert_eq!(decoded, packet);
 
     // No additional packets
+    assert!(decoder.next_packet().is_none());
+}
+
+#[test]
+fn resynchronizes_after_noise_partial_magic_and_invalid_lengths() {
+    let mut decoder = PacketDecoder::new();
+    decoder.push(&[0xff; 100]);
+    decoder.push(&MAGIC_WORD[..3]);
+    assert!(decoder.next_packet().is_none());
+    let mut bad = vec![0; HEADER_SIZE];
+    bad[..8].copy_from_slice(&MAGIC_WORD);
+    decoder.push(&bad[3..]); // impossible zero packet length
+    let mut valid = vec![0; HEADER_SIZE];
+    valid[..8].copy_from_slice(&MAGIC_WORD);
+    valid[12..16].copy_from_slice(&(HEADER_SIZE as u32).to_le_bytes());
+    decoder.push(&valid);
+    assert_eq!(decoder.next_packet(), Some(valid));
     assert!(decoder.next_packet().is_none());
 }
 

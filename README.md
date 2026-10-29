@@ -6,7 +6,7 @@
 persistent settings, a playable driving range, and an integrated custom-hole
 builder. Paint surfaces, sculpt terrain, place trees/cup/tee, save designs and
 play them with configurable no-putting scoring. It runs independently of the
-radar backend, with built-in shot simulation.
+radar backend in **Debug** mode, or accepts live radar shots in **Real** mode.
 
 ### Play
 
@@ -33,15 +33,58 @@ release builder runs checks and creates native executable packages with embedded
 game assets, player instructions, licenses and checksums. No pip packages are needed.
 
 See [`golf_game/README.md`](golf_game/README.md) for architecture, the shot contract,
-checks, and future radar integration.
+checks, and live radar integration.
 See [`golf_game/docs/HOLE_STUDIO.md`](golf_game/docs/HOLE_STUDIO.md) for hole editing,
 custom-hole play and automatic green scoring.
 
-## One radar application
+## Play with live radar (Rust)
 
-Everything lives in **`radar_app/`**: the web dashboard, live serial connection, CFG editing, exact-byte recording, saved sessions, replay, and analysis.
+The Rust app in **`radar_app/`** now detects shots continuously from the data UART
+and sends JSON straight to Pinewater over TCP. From the repository root:
 
-The shared decoder and offline export code is in `radar_app/analyzer.py`, and the replay template is in `radar_app/static/viewer.html`. Docker Compose runs the application and a small Raspberry Pi 5 USB-power helper.
+```bash
+# Stop the legacy dashboard first if it is using the radar UARTs.
+docker compose stop radar
+
+cargo run --release --manifest-path radar_app/Cargo.toml -- live \
+  radar_app/configs/golf.cfg /dev/ttyUSB0 /dev/ttyUSB1 0.0.0.0:8765
+```
+
+In another terminal, start the game with `python3 tools/run_range.py`, then open
+the range or a local round. In **The next shot**, select **Real · live radar**.
+Enter `127.0.0.1` if the Rust app is on the same computer, or the radar computer's
+LAN IP (for example `192.168.50.100`) if playing elsewhere. Use port **8765** and
+click **Connect / reconnect**. Wait for **READY — SHOOT NOW**, then hit the real
+ball: a detected shot launches automatically. Wait for the next ready indication
+before the next swing. Local golf applies the shot to the highlighted player.
+
+The Rust command uploads the selected CFG and starts the sensor. Change the port
+arguments for your device (Windows accepts `COM3`, `COM4`, etc.). The frame period
+is taken from that CFG. Only one game should use the live service at a time.
+The game reconnects automatically; paused/busy/disconnected shots are not saved
+for a future turn. Debug mode keeps the sliders and Space-to-launch controls.
+
+`spin_rpm` remains zero because the current Rust estimator does not measure spin.
+Speed/direction/elevation use the existing tracking estimator, now run on live
+frames. The physical target line is radar +Y; in-game aim rotates that launch line.
+
+Software checks (no radar required):
+
+```bash
+cargo test --manifest-path radar_app/Cargo.toml
+python3 -m unittest tests.test_rust_live   # Linux emulated serial UARTs -> Rust -> TCP
+python3 tools/run_range.py --check        # Includes live TCP -> game checks
+```
+
+See [the live connection contract](golf_game/README.md#live-radar-connection) for
+readiness, framing and reconnect details. Existing packaged executables must be
+rebuilt to include the new input modes.
+
+## Legacy Python radar dashboard
+
+**`radar_app_python/`** contains the web dashboard, live serial connection, CFG
+editing, exact-byte recording, saved sessions, replay, and analysis.
+Docker Compose runs that application and a Raspberry Pi 5 USB-power helper.
 
 ## Start with Docker Compose
 

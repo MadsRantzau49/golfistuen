@@ -8,6 +8,7 @@ const PATH := "user://settings.cfg"
 const DEFAULTS := {"fullscreen": false, "quality": "High", "master_volume": .8,
 	"ambience_volume": .6, "effects_volume": .8, "units": "Metres",
 	"reduced_motion": false, "show_trail": true,
+	"shot_mode":"Debug", "radar_host":"127.0.0.1", "radar_port":8765,
 	"green_putts":2,"water_penalty":1,"oob_penalty":1,"max_strokes":12}
 var values: Dictionary = DEFAULTS.duplicate()
 
@@ -38,6 +39,9 @@ func valid(key: String, value: Variant) -> bool:
 		return value in ["Low","Medium","High"]
 	if key == "units":
 		return value in ["Metres","Yards"]
+	if key == "shot_mode":return value in ["Debug","Real"]
+	if key == "radar_host":return value is String and not value.strip_edges().is_empty() and value.length()<=253
+	if key == "radar_port":return value is int and value>=1 and value<=65535
 	if key in HoleRules.DEFAULTS:return HoleRules.valid(key,value)
 	return value is bool
 
