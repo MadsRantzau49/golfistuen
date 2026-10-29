@@ -37,6 +37,24 @@ pub fn replay_session(directory: &Path, config: SwingConfig) -> io::Result<Value
             let event: Value = serde_json::from_str(&line?).map_err(|error| {
                 io::Error::other(format!("{}:{}: {error}", path.display(), line_number + 1))
             })?;
+            if event["type"] == "shot_capture_ended" {
+                let capture = &event["data"]["capture"];
+                if capture["state"] == "complete" {
+                    match detector.finish() {
+                        Some(DetectionEvent::BallDetected(shot))=>attempts.push(json!({"end_frame":last_number,"shot":shot,"report":detector.take_report()})),
+                        Some(DetectionEvent::NoBallDetected)=>attempts.push(json!({"end_frame":last_number,"report":detector.take_report()})),
+                        _=>{}
+                    }
+                } else if let Some(report) = detector.abort_report(
+                    capture["end_reason"]
+                        .as_str()
+                        .unwrap_or("capture_interrupted"),
+                ) {
+                    attempts.push(json!({"end_frame":last_number,"report":report}));
+                }
+                detector.reset();
+                last_arm = None;
+            }
             // Preserve revocations that occur between radar frames as well as
             // the arm token visible on the next frame (which may be reused).
             if matches!(

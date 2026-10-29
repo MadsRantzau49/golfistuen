@@ -160,26 +160,26 @@ See [the live connection contract](golf_game/README.md#live-radar-connection) fo
 readiness, framing and reconnect details. Existing packaged executables must be
 rebuilt to include the new input modes.
 
-## 3D radar debug range in Pinewater
+## Shot notes — timed attempts for debugging
 
-The game's main menu now includes **Radar debug range · 3D capture**. It displays
-the raw radar point cloud as a replayable 3D movie, including background/person/club
-returns and accepted/rejected candidate tracks. Connect to the existing Rust live
-service, or open a saved recording folder without hardware. You can orbit, pan,
-scrub, slow down, step frames, click individual points and inspect rejection/fit
-diagnostics for every attempt. Saved sessions can also be browsed over the LAN.
+Choose **Shot notes · timed capture** in Pinewater's main menu. Press **Space**
+before taking a real shot and **Space** again afterwards. Each attempt gets its
+own saved log window, even when no ball is detected. Then click your estimates:
 
-**Mark live hit** / **Dry swing** preserves operator labels and a three-second
-window even when the detector never triggers. Export a portable JSON clip to share
-the original measurements and diagnostics. Pausing playback keeps capture running.
+- Speed: **Low / Medium / High / Full speed**
+- Elevation: **Rolling / Very low jumping / Low / Medium / Good swing / Too high / Instant ceiling**
+- Direction: **Full left / Left / Straight / Right / Full right**
+
+Other notes are optional and default to **None**. Descriptions auto-save and can
+be edited in shot history. Each JSON record includes timing, frame/byte references,
+the description and a detector-result summary. Local drafts survive disconnections.
 
 ```bash
-python3 tools/run_range.py --radar-debug
-python3 tools/run_range.py --radar-session radar_app/logs/radar-live/SESSION
+python3 tools/run_range.py --shot-notes
 ```
 
-See [`golf_game/docs/RADAR_DEBUG.md`](golf_game/docs/RADAR_DEBUG.md) for controls,
-point/track colors, saved-session browsing, limits and the debugging workflow.
+See [`golf_game/docs/SHOT_NOTES.md`](golf_game/docs/SHOT_NOTES.md) for controls,
+saved file locations and the debugging workflow.
 Restart the updated Rust service and rebuild/relaunch older packaged games.
 
 ## Legacy Python radar dashboard

@@ -356,20 +356,17 @@ not scored. Custom holes add water/OOB penalties and trunk deflections through t
 shared custom-hole simulator; see the Hole Studio guide.
 Cameras, distance-unit preferences and graphics settings cannot alter shot physics.
 
-## Radar debug range
+## Shot notes
 
-Choose **Radar debug range · 3D capture** in the main menu for raw 3D radar movies,
-including club/person/background returns and failed attempts. It supports live
-capture, remote session browsing, local recording folders, frame stepping/scrubbing,
-slow motion, point inspection and candidate/model overlays. Mark actual hits and
-dry swings to preserve operator labels even when detection never triggered, then
-export a portable clip for analysis. This instrument mode evaluates consecutive
-attempts independently of gameplay turn arming and adds no golf strokes.
+Choose **Shot notes · timed capture** in the main menu. **Space** starts a capture;
+the next **Space** ends it. Click qualitative speed, elevation and direction
+estimates, then add optional notes (default None). Every attempt is linked to its
+actual radar log window, including shots the detector missed. Descriptions auto-save
+to per-shot JSON files, with a local draft backup and editable history. Captures
+do not add gameplay strokes.
 
-See [`docs/RADAR_DEBUG.md`](docs/RADAR_DEBUG.md) for the complete workflow and
-controls. `run_range.py --radar-debug` opens it directly; `--radar-session PATH`
-opens an existing local recording. The standard checks and native release builder
-include `radar_debug_checks.gd`.
+See [`docs/SHOT_NOTES.md`](docs/SHOT_NOTES.md). `run_range.py --shot-notes` opens the
+form directly. The standard checks and release builder include `shot_notes_checks.gd`.
 
 ## Verification and visual review
 

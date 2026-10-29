@@ -6,7 +6,17 @@ use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LogPosition {
+    pub elapsed_s: f64,
+    pub unix_time_ms: u64,
+    pub event_sequence: u64,
+    pub raw_bytes_received: u64,
+    pub last_frame_number: Option<u32>,
+}
 
 const SEGMENT_BYTES: u64 = 64 * 1024 * 1024;
 
@@ -88,9 +98,26 @@ pub struct LiveLog {
     raw_bytes: u64,
     swing_sequence: u64,
     active_swing: Option<u64>,
+    capture_id: Option<String>,
 }
 
 impl LiveLog {
+    pub fn set_capture_id(&mut self, id: Option<String>) {
+        self.capture_id = id;
+    }
+
+    pub fn position(&self, last_frame_number: Option<u32>) -> LogPosition {
+        LogPosition {
+            elapsed_s: self.elapsed_s(),
+            unix_time_ms: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis() as u64,
+            event_sequence: self.sequence + 1,
+            raw_bytes_received: self.raw_bytes,
+            last_frame_number,
+        }
+    }
     pub fn elapsed_s(&self) -> f64 {
         self.started.elapsed().as_secs_f64()
     }
@@ -134,6 +161,7 @@ impl LiveLog {
             raw_bytes: 0,
             swing_sequence: 0,
             active_swing: None,
+            capture_id: None,
         };
         log.event("session_started", metadata)?;
         eprintln!(
@@ -168,7 +196,7 @@ impl LiveLog {
             "sequence":self.sequence, "type":kind,
             "unix_time_ms":SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis(),
             "elapsed_s":elapsed_s, "raw_bytes_received":self.raw_bytes,
-            "swing_id":self.active_swing, "data":data,
+            "swing_id":self.active_swing, "capture_id":self.capture_id,"data":data,
         }))?;
         bytes.push(b'\n');
         self.events.record(&bytes)?;

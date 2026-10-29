@@ -57,8 +57,8 @@ class RustLiveTest(unittest.TestCase):
         incoming = b""
         messages = []
         sent_bytes = bytearray()
-        debug_mode = False
-        last_debug_heartbeat = 0.0
+        notes_mode = False
+        last_notes_heartbeat = 0.0
 
         def send_frame(point=None):
             nonlocal frame
@@ -82,12 +82,12 @@ class RustLiveTest(unittest.TestCase):
             time.sleep(0.02)
 
         def receive_until(predicate, stream=True, timeout=3):
-            nonlocal incoming, last_debug_heartbeat
+            nonlocal incoming, last_notes_heartbeat
             deadline = time.monotonic() + timeout
             while time.monotonic() < deadline:
-                if debug_mode and time.monotonic() - last_debug_heartbeat > 1:
-                    game.sendall(b'{"type":"debug_subscribe","enabled":true}\n')
-                    last_debug_heartbeat = time.monotonic()
+                if notes_mode and time.monotonic() - last_notes_heartbeat > 1:
+                    game.sendall(b'{"type":"notes_subscribe","enabled":true}\n')
+                    last_notes_heartbeat = time.monotonic()
                 if stream:
                     send_frame()
                 if select.select([game], [], [], 0.03)[0]:
@@ -175,73 +175,67 @@ class RustLiveTest(unittest.TestCase):
             # Recording continues even without a connected game.
             send_frame((0.0, 1.6, 0.0, 10.0))
             time.sleep(0.1)
-            # The instrument mode captures every raw point and keeps detecting
-            # successive attempts without consuming gameplay turns.
+            # Operator-defined start/end windows exist independently of whether
+            # the detector finds a ball. Notes are saved against that exact ID.
             game = socket.create_connection(("127.0.0.1", port), timeout=3)
             incoming = b""
-            debug_mode = True
-            debug_start = len(messages)
-            info = receive_until(lambda message: message["type"] == "debug_info")
-            self.assertIn("sensor", info["configuration"])
-            background = [(index * 0.001, 1.0, 0.0, 0.0) for index in range(193)]
-            send_frame(background)
-            number = frame
-            receive_until(lambda message: message["type"] == "debug_frame"
-                          and message["diagnostics"]["frame_number"] == number
-                          and message["part"] == message["parts"] - 1)
-            parts = [message for message in messages[debug_start:] if message["type"] == "debug_frame"
-                     and message["diagnostics"]["frame_number"] == number]
-            self.assertEqual(len(parts), 4)
-            self.assertEqual(sum(len(part["diagnostics"]["points"]) for part in parts), 193,
-                             "Background/person/club returns must not be filtered from the debug movie")
-            for index in range(3):
-                send_frame((0.0, 1.0 + index * 0.2, 0.0, 10.0))
-            receive_until(lambda message: message["type"] == "debug_attempt_end" and message["source"] == "live"
-                          and message["attempt_id"] == 1)
+            notes_mode = True
+            notes_start = len(messages)
+            info = receive_until(lambda message: message["type"] == "notes_info")
+            self.assertEqual(info["captures"], [])
+
+            def command(kind, request, **fields):
+                game.sendall((json.dumps({"type": kind, "request_id": request, **fields}) + "\n").encode())
+
+            command("capture_start", "start-1", capture_id="notes-hit-1", client_time_ms=10000)
+            first_capture = receive_until(lambda message: message.get("request_id") == "start-1")["capture"]
+            self.assertEqual(first_capture["annotation"], {"speed": None, "elevation": None, "direction": None, "notes": None})
             send_hit(15.0)
-            receive_until(lambda message: message["type"] == "debug_attempt_end" and message["source"] == "live"
-                          and message["attempt_id"] == 2)
-            for _ in range(8):
-                send_frame()
-            send_hit(12.0)
-            receive_until(lambda message: message["type"] == "debug_attempt_end" and message["source"] == "live"
-                          and message["attempt_id"] == 3)
-            reports = [message["report"] for message in messages[debug_start:]
-                       if message["type"] == "debug_attempt_begin" and message["source"] == "live"]
-            self.assertEqual([report["outcome"] for report in reports],
-                             ["no_ball_detected", "ball_detected", "ball_detected"])
-            self.assertFalse(any(message["type"] == "shot" for message in messages[debug_start:]),
-                             "The diagnostic mode must not deliver gameplay strokes")
-            latest = next(message for message in reversed(messages) if message["type"] == "debug_frame"
-                          and message["source"] == "live")
-            mark = {"outcome": "operator_mark", "operator_label": "ball_hit", "operator_note": "integration label",
-                    "start_frame": latest["diagnostics"]["frame_number"],
-                    "end_frame": latest["diagnostics"]["frame_number"],
-                    "start_time_s": latest["time_s"], "end_time_s": latest["time_s"]}
-            game.sendall((json.dumps({"type": "debug_mark", "session_id": info["session_id"],
-                                     "request_id": "mark", "report": mark}) + "\n").encode())
-            receive_until(lambda message: message["type"] == "debug_marked")
-            game.sendall(b'{"type":"debug_sessions","request_id":"sessions"}\n')
-            sessions = receive_until(lambda message: message["type"] == "debug_sessions")
-            self.assertEqual(sessions["sessions"][0]["id"], info["session_id"])
-            game.sendall((json.dumps({"type": "debug_attempts", "request_id": "attempts",
-                                     "session_id": info["session_id"]}) + "\n").encode())
-            archive = receive_until(lambda message: message["type"] == "debug_attempts")
-            self.assertEqual(len(archive["attempts"]), 8)
-            self.assertEqual(archive["attempts"][-1]["operator_label"], "ball_hit")
-            game.sendall((json.dumps({"type": "debug_clip", "request_id": "clip", "session_id": info["session_id"],
-                                     "attempt_id": 0, "before_s": 0.1, "after_s": 0.1}) + "\n").encode())
-            receive_until(lambda message: message["type"] == "debug_clip_end" and message["request_id"] == "clip")
-            clip_frames = [message for message in messages if message["type"] == "debug_frame"
-                           and message.get("request_id") == "clip"]
-            self.assertTrue(any(message["diagnostics"]["points"] for message in clip_frames))
-            clip_report = next(message["report"] for message in messages
-                               if message["type"] == "debug_attempt_begin" and message.get("request_id") == "clip")
-            self.assertEqual(clip_report["outcome"], "no_ball_detected")
-            game.sendall(b'{"type":"debug_attempts","request_id":"bad","session_id":"../outside"}\n')
-            receive_until(lambda message: message["type"] == "debug_error" and message["request_id"] == "bad")
-            receive_until(lambda message: message["type"] == "debug_frame" and message["source"] == "live")
-            game.close();game = None;debug_mode = False
+            command("capture_end", "end-1", capture_id="notes-hit-1", client_time_ms=12000)
+            captured_hit = receive_until(lambda message: message.get("request_id") == "end-1")["capture"]
+            self.assertEqual(captured_hit["state"], "complete")
+            self.assertGreater(captured_hit["frame_count"], 0)
+            self.assertGreater(captured_hit["point_count"], 0)
+            self.assertGreater(captured_hit["duration_s"], 0)
+            self.assertEqual(captured_hit["confirmed_balls"], 1)
+            annotation = {"speed": "full_speed", "elevation": "instant_ceiling", "direction": "full_left",
+                          "notes": "Travelled about 4 m, about 2 m high, then hit ceiling"}
+            command("capture_annotate", "save-1", session_id=info["session_id"], capture_id="notes-hit-1",
+                    annotation_revision=0, annotation=annotation)
+            saved_hit = receive_until(lambda message: message.get("request_id") == "save-1")["capture"]
+            self.assertEqual(saved_hit["annotation"], annotation)
+            self.assertEqual(saved_hit["annotation_revision"], 1)
+            command("capture_start", "start-2", capture_id="notes-missed-2", client_time_ms=20000)
+            receive_until(lambda message: message.get("request_id") == "start-2")
+            # A retry of an earlier stop must not close the new capture.
+            command("capture_end", "retry-end-1", capture_id="notes-hit-1", client_time_ms=21000)
+            self.assertEqual(receive_until(lambda message: message.get("request_id") == "retry-end-1")["capture"]["ended"], captured_hit["ended"])
+            send_frame((0.0, 1.0, 0.0, 0.0))
+            command("capture_end", "end-2", capture_id="notes-missed-2", client_time_ms=22000)
+            missed = receive_until(lambda message: message.get("request_id") == "end-2")["capture"]
+            self.assertEqual(missed["state"], "complete")
+            self.assertEqual(missed["confirmed_balls"], 0)
+            self.assertGreater(missed["frame_count"], 0)
+            command("capture_annotate", "save-2", session_id=info["session_id"], capture_id="notes-missed-2",
+                    annotation_revision=0, annotation={"speed": "low", "elevation": "rolling", "direction": "full_right", "notes": None})
+            self.assertIsNone(receive_until(lambda message: message.get("request_id") == "save-2")["capture"]["annotation"]["notes"])
+            command("capture_annotate", "invalid", session_id=info["session_id"], capture_id="notes-missed-2",
+                    annotation_revision=1, annotation={"spin": 1000})
+            self.assertEqual(receive_until(lambda message: message.get("request_id") == "invalid")["type"], "notes_error")
+            command("capture_start", "start-3", capture_id="notes-interrupted-3", client_time_ms=30000)
+            receive_until(lambda message: message.get("request_id") == "start-3")
+            send_frame((0.0, 1.0, 0.0, 0.0))
+            game.close();game = None
+            time.sleep(0.15)
+            game = socket.create_connection(("127.0.0.1", port), timeout=3)
+            incoming = b"";last_notes_heartbeat = 0
+            restored = receive_until(lambda message: message["type"] == "notes_info")
+            self.assertEqual(len(restored["captures"]), 3)
+            self.assertEqual(restored["captures"][0]["state"], "interrupted")
+            self.assertEqual(restored["captures"][0]["end_reason"], "client_disconnected")
+            self.assertEqual(next(c for c in restored["captures"] if c["capture_id"] == "notes-hit-1")["annotation"], annotation)
+            self.assertFalse(any(message["type"] == "shot" for message in messages[notes_start:]), "Notes capture must not deliver gameplay strokes")
+            game.close();game = None;notes_mode = False
             time.sleep(0.15)
         finally:
             if game:
@@ -268,10 +262,8 @@ class RustLiveTest(unittest.TestCase):
                       for line in path.read_text().splitlines()]
             self.assertEqual([event["sequence"] for event in events], list(range(1, len(events) + 1)))
             completed = [event for event in events if event["type"] == "swing_completed"]
-            self.assertEqual([event["data"]["report"]["outcome"] for event in completed],
-                             ["no_ball_detected", "ball_detected", "ball_detected", "aborted",
-                              "no_ball_detected", "ball_detected", "ball_detected"])
-            self.assertEqual(len({event["swing_id"] for event in completed}), 7)
+            self.assertEqual([event["data"]["report"]["outcome"] for event in completed[:4]],
+                             ["no_ball_detected", "ball_detected", "ball_detected", "aborted"])
             miss = completed[0]["data"]["report"]
             self.assertGreater(miss["points_evaluated"], 0)
             self.assertTrue(all(track["rejection_reason"] for track in miss["tracks"]))
@@ -281,13 +273,29 @@ class RustLiveTest(unittest.TestCase):
             self.assertTrue(any(event["type"] == "frame_timeout" for event in events))
             frames = [event["data"] for event in events if event["type"] == "frame"]
             self.assertTrue(any(not event["game_connected"] and event["diagnostics"]["points"] for event in frames))
-            self.assertEqual(sum(event["type"] == "shot_emitted" for event in events), 4)
-            self.assertEqual(sum(event["type"] == "operator_mark" for event in events), 1)
+            self.assertEqual(sum(event["type"] == "shot_capture_started" for event in events), 3)
+            self.assertEqual(sum(event["type"] == "shot_capture_ended" for event in events), 3)
+            for capture_id in ["notes-hit-1", "notes-missed-2", "notes-interrupted-3"]:
+                record = json.loads((session / "captures" / f"{capture_id}.json").read_text())
+                linked = [event for event in events if event["type"] == "frame" and event["capture_id"] == capture_id]
+                self.assertEqual(record["frame_count"], len(linked))
+                self.assertEqual(record["point_count"], sum(len(event["data"]["diagnostics"]["points"]) for event in linked))
+                self.assertTrue(record["ended"])
+                self.assertFalse("spin" in record["annotation"])
+                start_marker = next(event for event in events if event["type"] == "shot_capture_started"
+                                    and event["capture_id"] == capture_id)
+                end_marker = next(event for event in events if event["type"] == "shot_capture_ended"
+                                  and event["capture_id"] == capture_id)
+                self.assertEqual(record["started"]["event_sequence"], start_marker["sequence"])
+                self.assertEqual(record["ended"]["event_sequence"], end_marker["sequence"])
+                self.assertGreaterEqual(record["ended"]["raw_bytes_received"], record["started"]["raw_bytes_received"])
+                self.assertTrue(all(not isinstance(result["selected_shot"], dict) or "spin_rpm" not in result["selected_shot"]
+                                    for result in record["detector_results"]))
             replay = subprocess.run([str(root / "radar_app/target/debug/radar_app"), "replay-live",
                                      str(session), str(root / "radar_app/configs/swing.json")],
                                     check=True, capture_output=True, text=True)
             replay = json.loads(replay.stdout)
-            self.assertEqual(replay["statistics"]["confirmed_balls"], 4)
+            self.assertEqual(replay["statistics"]["confirmed_balls"], 3)
             self.assertEqual(replay["statistics"]["frames"], len(frames))
             self.assertTrue(any(attempt["outcome"] == "aborted" for attempt in replay["attempts"]))
         finally:

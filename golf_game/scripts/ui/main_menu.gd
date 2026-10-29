@@ -8,7 +8,7 @@ signal builder_requested
 signal holes_requested
 signal match_requested
 signal resume_requested
-signal radar_debug_requested
+signal shot_notes_requested
 
 var play_button: Button
 var resume_button:Button
@@ -94,7 +94,7 @@ func _build_modes() -> void:
 	holes.pressed.connect(func():holes_requested.emit());column.add_child(holes)
 	var builder:=AppStyle.button("04    Hole builder                          ↗")
 	builder.pressed.connect(func():builder_requested.emit());column.add_child(builder)
-	var radar:=AppStyle.button("05    Radar debug range · 3D capture    ↗")
-	radar.pressed.connect(func():radar_debug_requested.emit());column.add_child(radar)
+	var notes:=AppStyle.button("05    Shot notes · timed capture           ↗")
+	notes.pressed.connect(func():shot_notes_requested.emit());column.add_child(notes)
 	column.add_child(AppStyle.divider())
 	column.add_child(AppStyle.label("Pinewater · British Columbia\nBuild your own escape. No putting required.",13,Color("d1d9c6")))
