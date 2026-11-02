@@ -146,6 +146,21 @@ Click your estimate after each shot:
              instant ceiling.
   Direction: full left / left / straight / right / full right.
 
+Mark whether a ball was actually hit or missed; leave both unselected if unknown.
+Name the room, radar placement/alignment revision, ball type, launch support and
+whether it moves (for example, a moving pillow). Extra context tags are supported.
+The next shot inherits these conditions, hit/miss and qualitative labels. Change
+only what differs and verify the inherited outcome against what actually happened.
+
+When available, enter independent measured speed in km/h (km/t), direction and
+elevation in degrees, or actual travel distance in metres. Left is negative/right
+positive. Unknown measurements stay empty; zero means a measured zero. Extra
+numeric measurements are supported. Exact measurements belong to one attempt and
+start empty on the next. They override abstract labels during regression testing.
+Use the developer's shot-regression tool to choose numeric ranges/tolerances and
+compare detector versions on matching contexts. Distance testing needs a compatible
+distance estimator; the current radar only estimates launch speed and angles.
+
 Other notes default to None. You can describe approximate distance/height or
 anything else useful (for example, about 4 m forward and 2 m high). Descriptions
 auto-save. History lets you edit earlier shots, copy a summary, or export notes.

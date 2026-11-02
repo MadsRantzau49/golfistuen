@@ -260,7 +260,8 @@ fn notes_request(
                 let id = request["capture_id"]
                     .as_str()
                     .ok_or_else(|| io::Error::other("Missing capture ID"))?;
-                let capture = notes.start(id, request["client_time_ms"].as_u64(), log, frame)?;
+                let annotation = request.get("annotation").map(|value| serde_json::from_value::<Annotation>(value.clone())).transpose()?;
+                let capture = notes.start_annotated(id, request["client_time_ms"].as_u64(), annotation, log, frame)?;
                 game.arm = notes.active_id().map(str::to_owned);
                 Ok(json!({"type":"capture_started","capture":capture}))
             }

@@ -172,6 +172,27 @@ own saved log window, even when no ball is detected. Then click your estimates:
 - Elevation: **Rolling / Very low jumping / Low / Medium / Good swing / Too high / Instant ceiling**
 - Direction: **Full left / Left / Straight / Right / Full right**
 
+Shot notes also record independent **hit / miss**, freely named **room, radar
+placement, ball type, launch surface/support movement and custom conditions**.
+Context and qualitative labels carry into the next shot. Optional exact measured
+**km/h (km/t), direction, elevation, travel distance and future numeric metrics**
+can be entered alongside the abstract labels; exact measurements belong to one shot.
+
+Use these captures as a context-filtered regression dataset:
+
+```bash
+python3 tools/shot_regression.py configure logs/radar-live --profile configs/shot-criteria.json
+python3 tools/shot_regression.py run logs/radar-live --profile configs/shot-criteria.json --report logs/baseline.json
+# After a detector change, use the same data and acceptance criteria:
+python3 tools/shot_regression.py run logs/radar-live --profile configs/shot-criteria.json --report logs/candidate.json --baseline logs/baseline.json
+```
+
+Configuration asks for numeric ranges/tolerances instead of assuming what “low”
+means. Reports separate detection recall, missed-swing false positives, duplicates,
+numeric speed/angle quality and context clusters, using the actual saved CFG.
+See [the regression guide](golf_game/docs/SHOT_REGRESSION.md) for filtering,
+before/after comparisons, exact measurements, distance extensions and exit codes.
+
 Other notes are optional and default to **None**. Descriptions auto-save and can
 be edited in shot history. Each JSON record includes timing, frame/byte references,
 the description and a detector-result summary. Local drafts survive disconnections.

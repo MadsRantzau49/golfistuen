@@ -368,6 +368,14 @@ The read-only detector estimate updates during capture with registered speed,
 elevation and direction, and is preserved in shot history separately from operator
 descriptions. Short tracks are explicitly marked approximate.
 
+Record independent **hit/miss** truth and freely named test conditions: room,
+radar setup, ball type, launch surface/support movement and custom tags. Conditions
+and qualitative labels carry into the next shot. Optional exact speed (km/h),
+direction/elevation, travel distance and additional numeric measurements are saved
+alongside the abstract estimates; measured truth starts empty on each new attempt.
+The [regression framework](docs/SHOT_REGRESSION.md) replays matching recordings with
+their actual CFG, operator-chosen numeric ranges/tolerances and baseline comparisons.
+
 See [`docs/SHOT_NOTES.md`](docs/SHOT_NOTES.md). `run_range.py --shot-notes` opens the
 form directly. The standard checks and release builder include `shot_notes_checks.gd`.
 

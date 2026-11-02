@@ -18,13 +18,57 @@ Start/End button before starting another shot.
 
 | Field | Choices |
 | --- | --- |
+| Outcome | Hit · ball struck, Miss · no ball struck, or unselected/unknown |
 | Speed | Low, Medium, High, Full speed |
 | Elevation | Rolling, Very low jumping, Low, Medium, Good swing, Too high, Instant ceiling |
 | Direction | Full left, Left, Straight, Right, Full right |
 
 These are your qualitative estimates. They are not converted into invented speeds
 or angles. No selection means “Not set”; clicking the selected button again clears
-it. Each new capture starts with empty estimates and **Other notes: None**.
+it. The next capture inherits the **latest capture's context, hit/miss and qualitative
+estimates**, even while you are inspecting an older history row. Change only what
+differs. Verify inherited hit/miss against what actually happened. Unknown outcomes
+are retained but cannot pass regression tests. **Other notes: None** and exact
+measurements start empty for each new attempt.
+
+### Test conditions
+
+Use your own names for room/environment, radar placement/alignment revision, ball
+type, launch surface/support, support movement and CFG label. For example, a pillow
+and whether it moved belong in launch surface and support movement. Moving or
+rotating the radar should produce a new radar-setup name. Room dimensions can be
+recorded in the room name or as additional tags.
+
+There are no fixed lists of rooms, balls or supports. **Additional tags** accepts
+a JSON object with string values, such as `{"club":"7-iron","room_size":"4x6x2.5m"}`.
+Keys use letters, digits and underscores (up to 64 characters); values are up to
+512 characters, with at most 64 context tags. Empty named fields mean unknown.
+The actual saved `radar.cfg` is automatically fingerprinted by the test runner;
+the optional CFG label does not override it. `cfg_sha256` is reserved.
+
+### Optional exact ground truth
+
+Alongside the abstract labels, enter measured **speed in km/h (km/t)**, **direction
+in degrees**, **elevation in degrees**, and/or **actual travel distance in metres**.
+Left is negative; right positive. Empty means unknown; **zero is a real measurement**.
+Use independent measurements, not the detector's own displayed estimate.
+
+**Additional measurements** accepts numeric JSON with explicit unit-bearing keys,
+for example `{"carry_m":4.2}` or `{"speed_mps":15.0}`. Use either `speed_mps` or
+the km/h field, not both. Known speed/distance values must be nonnegative, direction
+is −180…180°, and elevation −90…90°. Measurement keys follow the context key rules;
+at most 64 finite numeric measurements are supported.
+
+Exact truth overrides the qualitative label for that axis during testing. Missing
+axes can still use qualitative labels. Actual measurements are **not inherited**,
+because one measured shot is not proof of the next shot's speed or distance.
+Context and qualitative descriptions still are inherited.
+
+Distance is preserved independently of launch angles/speed. The current radar
+detector does not estimate total travel distance; those test criteria stay
+**UNSCORED** until a compatible metric estimator is supplied. See the
+[regression testing guide](SHOT_REGRESSION.md) for configurable numeric ranges,
+exact tolerances, context filters, metric extensions and before/after comparisons.
 
 Optional notes can describe distance, height, contact or anything else useful:
 “Travelled about 4 metres, reached about 2 metres high, straight ahead.” There is
@@ -69,6 +113,9 @@ It contains:
   captured frames and frame/point counts.
 - The operator's client keypress timestamps for comparison.
 - Speed, elevation, direction and optional notes (`null` for unset/None).
+- Independent hit/miss (`null` for unknown), an open-ended `context` object and
+  numeric `measurements` object. New captures use schema version 2; older version 1
+  annotations remain readable with these fields unset/empty.
 - Detector attempt counts, confirmed/unconfirmed results and rejection summaries.
 - The latest registered detector estimate, observation support and algorithm version
   when available. This remains available after later rejected motion.

@@ -189,7 +189,8 @@ class RustLiveTest(unittest.TestCase):
 
             command("capture_start", "start-1", capture_id="notes-hit-1", client_time_ms=10000)
             first_capture = receive_until(lambda message: message.get("request_id") == "start-1")["capture"]
-            self.assertEqual(first_capture["annotation"], {"speed": None, "elevation": None, "direction": None, "notes": None})
+            self.assertEqual(first_capture["annotation"], {"speed": None, "elevation": None, "direction": None, "notes": None,
+                                                         "outcome": None, "context": {}, "measurements": {}})
             send_hit(15.0)
             live_guess = receive_until(lambda message: message["type"] == "capture_progress"
                                        and message["capture"]["confirmed_balls"] == 1)
@@ -204,14 +205,26 @@ class RustLiveTest(unittest.TestCase):
             self.assertAlmostEqual(captured_hit["detector_guess"]["speed_mps"], math.hypot(15, 3), delta=0.8)
             self.assertNotIn("spin_rpm", captured_hit["detector_guess"])
             annotation = {"speed": "full_speed", "elevation": "instant_ceiling", "direction": "full_left",
-                          "notes": "Travelled about 4 m, about 2 m high, then hit ceiling"}
+                          "notes": "Travelled about 4 m, about 2 m high, then hit ceiling", "outcome": "hit",
+                          "context": {"room": "test-room", "radar_setup": "tripod-v1", "ball_type": "foam",
+                                      "launch_surface": "pillow", "launch_motion": "moves", "custom_condition": "test"},
+                          "measurements": {"speed_kph": math.hypot(15, 3) * 3.6,
+                                           "direction_deg": 0, "elevation_deg": math.degrees(math.atan2(3, 15))}}
             command("capture_annotate", "save-1", session_id=info["session_id"], capture_id="notes-hit-1",
                     annotation_revision=0, annotation=annotation)
             saved_hit = receive_until(lambda message: message.get("request_id") == "save-1")["capture"]
-            self.assertEqual(saved_hit["annotation"], annotation)
+            self.assertEqual({k: v for k, v in saved_hit["annotation"].items() if k != "measurements"},
+                             {k: v for k, v in annotation.items() if k != "measurements"})
+            for metric, target in annotation["measurements"].items():
+                self.assertAlmostEqual(saved_hit["annotation"]["measurements"][metric], target)
+            annotation = saved_hit["annotation"]
             self.assertEqual(saved_hit["annotation_revision"], 1)
             command("capture_start", "start-2", capture_id="notes-missed-2", client_time_ms=20000)
-            receive_until(lambda message: message.get("request_id") == "start-2")
+            inherited = receive_until(lambda message: message.get("request_id") == "start-2")["capture"]["annotation"]
+            self.assertEqual(inherited["context"], annotation["context"])
+            self.assertEqual(inherited["speed"], annotation["speed"])
+            self.assertEqual(inherited["outcome"], "hit")
+            self.assertEqual(inherited["measurements"], {}, "Measurements must not silently become another shot's truth")
             # A retry of an earlier stop must not close the new capture.
             command("capture_end", "retry-end-1", capture_id="notes-hit-1", client_time_ms=21000)
             self.assertEqual(receive_until(lambda message: message.get("request_id") == "retry-end-1")["capture"]["ended"], captured_hit["ended"])
@@ -223,7 +236,8 @@ class RustLiveTest(unittest.TestCase):
             self.assertIsNone(missed["detector_guess"])
             self.assertGreater(missed["frame_count"], 0)
             command("capture_annotate", "save-2", session_id=info["session_id"], capture_id="notes-missed-2",
-                    annotation_revision=0, annotation={"speed": "low", "elevation": "rolling", "direction": "full_right", "notes": None})
+                    annotation_revision=0, annotation={"speed": "low", "elevation": "rolling", "direction": "full_right", "notes": None,
+                                                       "outcome": "miss", "context": annotation["context"]})
             self.assertIsNone(receive_until(lambda message: message.get("request_id") == "save-2")["capture"]["annotation"]["notes"])
             command("capture_annotate", "invalid", session_id=info["session_id"], capture_id="notes-missed-2",
                     annotation_revision=1, annotation={"spin": 1000})
@@ -304,6 +318,26 @@ class RustLiveTest(unittest.TestCase):
             self.assertEqual(replay["statistics"]["confirmed_balls"], 3)
             self.assertEqual(replay["statistics"]["frames"], len(frames))
             self.assertTrue(any(attempt["outcome"] == "aborted" for attempt in replay["attempts"]))
+            from tools import shot_regression as regression
+            cases = regression.discover([session])
+            profile = {"schema_version": 1, "criteria": {"tolerances": {
+                "speed_kph": 3, "direction_deg": 3, "elevation_deg": 3}}}
+            report = regression.run_suite(cases, profile, root / "radar_app/target/debug/radar_app",
+                                          root / "radar_app/configs/swing.json")
+            self.assertEqual(report["summary"]["passed"], 2)
+            self.assertEqual(report["summary"]["unscored"], 1, "Interrupted recordings cannot pass")
+            self.assertEqual(report["summary"]["false_positive_misses"], 0)
+            self.assertEqual(report["summary"]["numeric_quality_passes"], 1)
+            self.assertEqual(regression.compare(report, report)["regressed_cases"], [])
+            regression.write_json(session / "criteria.json", profile)
+            regression.write_json(session / "baseline.json", report)
+            command = [sys.executable, str(root / "tools/shot_regression.py"), "run", str(session),
+                       "--profile", str(session / "criteria.json"), "--baseline", str(session / "baseline.json"),
+                       "--report", str(session / "candidate.json")]
+            cli = subprocess.run(command, capture_output=True, text=True)
+            self.assertEqual(cli.returncode, 2, cli.stdout + cli.stderr)
+            self.assertIn("1 UNSCORED", cli.stdout)
+            self.assertEqual(json.loads((session / "candidate.json").read_text())["comparison"]["regressed_cases"], [])
         finally:
             log_root.cleanup()
 

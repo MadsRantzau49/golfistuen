@@ -1,5 +1,17 @@
 # Live ball detection and recorded-shot analysis
 
+## Regression workflow for detector changes
+
+Use independently annotated Pinewater shot notes as context-clustered test cases.
+`python3 tools/shot_regression.py configure RECORDINGS --profile criteria.json`
+asks for numeric label ranges and exact-measurement tolerances. Then use
+`run RECORDINGS --profile criteria.json --report candidate.json --baseline baseline.json`
+to replay the current detector with each recording's real CFG and compare identical
+datasets/criteria. Hit/miss truth, exact speed/angles, custom contexts, optional
+distance estimators, duplicate/false-positive detection and per-cluster quality are
+covered in the [regression guide](../golf_game/docs/SHOT_REGRESSION.md).
+The historical analyses below are separate from this reusable acceptance workflow.
+
 ## Seven annotated shots: current v2 analysis
 
 Source: `logs/radar-live/1793296169926267431-24640/` under `radar_app/`.

@@ -1,0 +1,28 @@
+name: Shot regression framework
+
+on:
+  workflow_dispatch:
+  push:
+    paths: ["radar_app/**", "tools/shot_regression.py", "tests/test_shot_regression.py", "tests/test_rust_live.py", "golf_game/scripts/*shot_notes*", "golf_game/scripts/input/shot_notes_client.gd", ".github/workflows/shot-regression.yml"]
+  pull_request:
+    paths: ["radar_app/**", "tools/shot_regression.py", "tests/test_shot_regression.py", "tests/test_rust_live.py", "golf_game/scripts/*shot_notes*", "golf_game/scripts/input/shot_notes_client.gd", ".github/workflows/shot-regression.yml"]
+
+permissions:
+  contents: read
+
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Detector and recorded-return fixtures
+        run: cargo test --manifest-path radar_app/Cargo.toml
+      - name: Scoring, context selection, exact measurements and baseline contracts
+        run: python -m unittest tests.test_shot_regression
+      - name: Emulated UART to shot notes to real detector replay and scoring
+        run: python -m unittest tests.test_rust_live

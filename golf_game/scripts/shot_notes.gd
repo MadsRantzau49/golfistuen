@@ -3,10 +3,17 @@ extends Node3D
 ## Space brackets a real attempt; the form records the operator's own estimates.
 signal menu_requested
 const CHOICES := {
+	"outcome":[["hit","Hit · ball struck"],["miss","Miss · no ball struck"]],
 	"speed":[["low","Low"],["medium","Medium"],["high","High"],["full_speed","Full speed"]],
 	"elevation":[["rolling","Rolling"],["very_low_jumping","Very low jumping"],["low","Low"],["medium","Medium"],["good_swing","Good swing"],["too_high","Too high"],["instant_ceiling","Instant ceiling"]],
 	"direction":[["full_left","Full left"],["left","Left"],["straight","Straight"],["right","Right"],["full_right","Full right"]]
 }
+const CONTEXT_FIELDS := {
+	"room":"Room / environment", "radar_setup":"Radar placement / alignment revision",
+	"ball_type":"Ball type", "launch_surface":"Launch surface / support",
+	"launch_motion":"Support movement", "cfg_label":"CFG label (actual CFG is saved automatically)"
+}
+const MEASUREMENT_FIELDS := {"speed_kph":"Measured speed · km/h (km/t)", "direction_deg":"Measured direction · degrees (left − / right +)", "elevation_deg":"Measured elevation · degrees", "distance_m":"Measured travel distance · metres"}
 var auto_connect := true
 var cache_path := "user://shot-notes.json"
 var interactive := true
@@ -21,6 +28,10 @@ var _save_at := -1
 var _updating := false
 var _keys: Array = []
 var _presets: Dictionary = {}
+var _context_inputs: Dictionary = {}
+var _extra_context: LineEdit
+var _measurement_inputs: Dictionary = {}
+var _extra_measurements: LineEdit
 var _host: LineEdit
 var _port: SpinBox
 var _status: Label
@@ -87,13 +98,29 @@ func _build_ui() -> void:
 	var scroll:=ScrollContainer.new();scroll.horizontal_scroll_mode=ScrollContainer.SCROLL_MODE_DISABLED;form_panel.add_child(scroll)
 	var form:=VBoxContainer.new();form.size_flags_horizontal=Control.SIZE_EXPAND_FILL;form.size_flags_vertical=Control.SIZE_EXPAND_FILL;form.add_theme_constant_override("separation",12);scroll.add_child(form)
 	form.add_child(AppStyle.label("Your estimate of this shot",25,AppStyle.CREAM,true))
-	for field in ["speed","elevation","direction"]:
+	form.add_child(AppStyle.label("Next shot inherits the latest shot's labels and context. Change only what differs. Unselect hit/miss for unknown.",13,AppStyle.MUTED))
+	for field in ["outcome","speed","elevation","direction"]:
 		form.add_child(AppStyle.label(str(field).capitalize(),15,AppStyle.GOLD))
 		var row:=HFlowContainer.new();row.add_theme_constant_override("h_separation",7);row.add_theme_constant_override("v_separation",6);form.add_child(row)
 		var group:=ButtonGroup.new();group.allow_unpress=true;_presets[field]={}
 		for choice in CHOICES[field]:
 			var button:=AppStyle.button(choice[1]);button.custom_minimum_size.y=36;button.toggle_mode=true;button.button_group=group
 			row.add_child(button);_presets[field][choice[0]]=button;button.pressed.connect(_preset_clicked.bind(field,choice[0],button))
+	form.add_child(AppStyle.label("Test conditions · your own names, no fixed categories",20,AppStyle.CREAM,true))
+	for field in CONTEXT_FIELDS:
+		form.add_child(AppStyle.label(CONTEXT_FIELDS[field],14,AppStyle.GOLD))
+		var input:=LineEdit.new();input.placeholder_text="Not recorded";form.add_child(input);_context_inputs[field]=input
+		input.text_changed.connect(func(value: String):_context_changed(field,value))
+	form.add_child(AppStyle.label('Additional tags · JSON object, e.g. {"club":"iron", "room_size":"4x6x2.5m"}',13,AppStyle.GOLD))
+	_extra_context=LineEdit.new();_extra_context.placeholder_text="{}";form.add_child(_extra_context);_extra_context.text_changed.connect(_extra_context_changed)
+	form.add_child(AppStyle.label("Exact measurements · optional, override abstract labels",20,AppStyle.CREAM,true))
+	form.add_child(AppStyle.label("Leave unknown values empty. Exact measurements start empty on each shot. Distance needs a compatible test estimator.",13,AppStyle.MUTED))
+	for field in MEASUREMENT_FIELDS:
+		form.add_child(AppStyle.label(MEASUREMENT_FIELDS[field],14,AppStyle.GOLD))
+		var input:=LineEdit.new();input.placeholder_text="Unknown";form.add_child(input);_measurement_inputs[field]=input
+		input.text_changed.connect(func(value: String):_measurement_changed(field,value))
+	form.add_child(AppStyle.label('Additional measurements · numeric JSON with unit-bearing keys, e.g. {"carry_m":4.2}',13,AppStyle.GOLD))
+	_extra_measurements=LineEdit.new();_extra_measurements.placeholder_text="{}";form.add_child(_extra_measurements);_extra_measurements.text_changed.connect(_extra_measurements_changed)
 	form.add_child(AppStyle.label("Other notes · optional",15,AppStyle.GOLD))
 	_notes=TextEdit.new();_notes.placeholder_text="None. Optional: travelled about 4 m, reached about 2 m high, straight ahead…"
 	_notes.custom_minimum_size=Vector2(0,100);_notes.size_flags_vertical=Control.SIZE_EXPAND_FILL;_notes.wrap_mode=TextEdit.LINE_WRAPPING_BOUNDARY;form.add_child(_notes)
@@ -151,9 +178,61 @@ func _notes_changed() -> void:
 	client.set_annotation(selected_key,annotation);_save_at=Time.get_ticks_msec()+500
 
 
+func _context_changed(field: String, value: String) -> void:
+	if _updating or selected_key.is_empty():return
+	var annotation:=client.annotation_for(selected_key).duplicate(true)
+	var context: Dictionary=annotation.get("context",{}).duplicate(true)
+	if value.strip_edges().is_empty():context.erase(field)
+	else:context[field]=value
+	annotation.context=context;client.set_annotation(selected_key,annotation);_save_at=Time.get_ticks_msec()+500
+
+
+func _extra_context_changed(value: String) -> void:
+	if _updating or selected_key.is_empty():return
+	var parser:=JSON.new()
+	if parser.parse(value if not value.strip_edges().is_empty() else "{}")!=OK or not parser.data is Dictionary:_show_message("Additional tags must be a JSON object. The last valid tags are retained.");return
+	var extra: Dictionary=parser.data
+	for key in extra:
+		if not extra[key] is String or CONTEXT_FIELDS.has(key) or key=="cfg_sha256":
+			_show_message("Additional tags need string values and unique keys outside the named fields; cfg_sha256 is automatic.");return
+	var annotation:=client.annotation_for(selected_key).duplicate(true)
+	for field in CONTEXT_FIELDS:
+		var text: String=_context_inputs[field].text.strip_edges()
+		if not text.is_empty():extra[field]=text
+	annotation.context=extra;client.set_annotation(selected_key,annotation);_save_at=Time.get_ticks_msec()+500
+
+
 func _flush_current() -> void:
 	_save_at=-1
 	if client!=null and not selected_key.is_empty():client.save_annotation(selected_key)
+
+
+func _measurement_changed(field: String, value: String) -> void:
+	if _updating or selected_key.is_empty():return
+	var annotation:=client.annotation_for(selected_key).duplicate(true)
+	var measurements: Dictionary=annotation.get("measurements",{}).duplicate(true)
+	if value.strip_edges().is_empty():measurements.erase(field)
+	elif value.is_valid_float():
+		measurements[field]=value.to_float()
+		if field=="speed_kph":measurements.erase("speed_mps")
+	else:_show_message("Enter a number or leave the measurement empty. The last valid value is retained.");return
+	annotation.measurements=measurements;client.set_annotation(selected_key,annotation);_save_at=Time.get_ticks_msec()+500
+
+
+func _extra_measurements_changed(value: String) -> void:
+	if _updating or selected_key.is_empty():return
+	var parser:=JSON.new()
+	if parser.parse(value if not value.strip_edges().is_empty() else "{}")!=OK or not parser.data is Dictionary:_show_message("Additional measurements must be a numeric JSON object. The last valid values are retained.");return
+	var extra: Dictionary=parser.data
+	for key in extra:
+		if not (extra[key] is float or extra[key] is int) or MEASUREMENT_FIELDS.has(key):
+			_show_message("Use numeric values and keys outside the named measurement fields.");return
+	var annotation:=client.annotation_for(selected_key).duplicate(true)
+	for field in MEASUREMENT_FIELDS:
+		var text: String=_measurement_inputs[field].text.strip_edges()
+		if text.is_valid_float():extra[field]=text.to_float()
+	if extra.has("speed_mps") and extra.has("speed_kph"):_show_message("Use either speed_mps or the km/h field, not both.");return
+	annotation.measurements=extra;client.set_annotation(selected_key,annotation);_save_at=Time.get_ticks_msec()+500
 
 
 func _refresh_history() -> void:
@@ -179,12 +258,14 @@ func _select_index(index: int) -> void:
 
 func _description(annotation: Dictionary) -> String:
 	var labels: Array[String]=[]
-	for field in ["speed","elevation","direction"]:
+	for field in ["outcome","speed","elevation","direction"]:
 		var text:="Not set"
 		for choice in CHOICES[field]:
 			if annotation.get(field)==choice[0]:text=choice[1];break
 		labels.append(str(field).capitalize()+": "+text)
 	labels.append("Notes: "+str(annotation.notes) if annotation.get("notes")!=null else "Notes: None")
+	if not annotation.get("context",{}).is_empty():labels.append("Context: "+JSON.stringify(annotation.context))
+	if not annotation.get("measurements",{}).is_empty():labels.append("Measured: "+JSON.stringify(annotation.measurements))
 	return " · ".join(labels)
 
 
@@ -197,6 +278,25 @@ func _load_form() -> void:
 	_notes.editable=not selected_key.is_empty()
 	var text:=str(annotation.get("notes","")) if annotation.get("notes")!=null else ""
 	if _notes.text!=text:_notes.text=text
+	var context: Dictionary=annotation.get("context",{}).duplicate(true)
+	for field in _context_inputs:
+		var input: LineEdit=_context_inputs[field];input.editable=not selected_key.is_empty()
+		var value:=str(context.get(field,""))
+		if input.text!=value:input.text=value
+		context.erase(field)
+	_extra_context.editable=not selected_key.is_empty()
+	# Do not replace valid JSON while the operator is typing it.
+	var parser:=JSON.new()
+	var current_extra: Variant=parser.data if parser.parse(_extra_context.text if not _extra_context.text.is_empty() else "{}")==OK else null
+	if current_extra!=context and not _extra_context.has_focus():_extra_context.text=JSON.stringify(context)
+	var measurements: Dictionary=annotation.get("measurements",{}).duplicate(true)
+	for field in _measurement_inputs:
+		var input: LineEdit=_measurement_inputs[field];input.editable=not selected_key.is_empty()
+		var value:=str(measurements[field]) if measurements.has(field) else ""
+		if not input.has_focus() and input.text!=value:input.text=value
+		measurements.erase(field)
+	_extra_measurements.editable=not selected_key.is_empty()
+	if not _extra_measurements.has_focus():_extra_measurements.text=JSON.stringify(measurements)
 	_summary.text=_description(annotation) if not selected_key.is_empty() else "Press Space to create the first shot. Estimates and notes can be filled in afterwards."
 	_updating=false;_update_saved_status()
 	_update_detector_guess()

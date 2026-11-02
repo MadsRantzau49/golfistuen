@@ -47,6 +47,18 @@ pub struct Annotation {
     pub elevation: Option<Elevation>,
     pub direction: Option<Direction>,
     pub notes: Option<String>,
+    pub outcome: Option<Outcome>,
+    /// Open-ended experimental conditions, independent of detector decisions.
+    pub context: BTreeMap<String, String>,
+    /// Independent measured ground truth; units are explicit in each metric key.
+    pub measurements: BTreeMap<String, f64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Outcome {
+    Hit,
+    Miss,
 }
 
 impl Annotation {
@@ -61,6 +73,42 @@ impl Annotation {
             .is_some_and(|value| value.chars().count() > 4096)
         {
             return Err(io::Error::other("Notes must be at most 4096 characters"));
+        }
+        if self.context.len() > 64 {
+            return Err(io::Error::other("Use at most 64 context tags"));
+        }
+        let mut context = BTreeMap::new();
+        for (key, value) in self.context {
+            let key = key.trim();
+            let value = value.trim();
+            if key.is_empty() || key.len() > 64 || !key.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'_') {
+                return Err(io::Error::other("Context keys must be 1–64 letters, digits or underscores"));
+            }
+            if key == "cfg_sha256" {
+                return Err(io::Error::other("cfg_sha256 is reserved for the actual recorded CFG"));
+            }
+            if value.chars().count() > 512 {
+                return Err(io::Error::other("Context values must be at most 512 characters"));
+            }
+            if !value.is_empty() && context.insert(key.to_owned(), value.to_owned()).is_some() {
+                return Err(io::Error::other("Duplicate context key after trimming"));
+            }
+        }
+        self.context = context;
+        if self.measurements.len() > 64 || self.measurements.iter().any(|(key, value)| {
+            key.is_empty() || key.len() > 64 || !key.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'_') || !value.is_finite()
+        }) {
+            return Err(io::Error::other("Use at most 64 finite measurements with letters/digits/underscore keys"));
+        }
+        if self.measurements.contains_key("speed_mps") && self.measurements.contains_key("speed_kph") {
+            return Err(io::Error::other("Supply exact speed in either m/s or km/h, not both"));
+        }
+        for (key, value) in &self.measurements {
+            if ((key == "speed_mps" || key == "speed_kph" || key == "distance_m") && *value < 0.0)
+                || (key == "direction_deg" && value.abs() > 180.0)
+                || (key == "elevation_deg" && value.abs() > 90.0) {
+                return Err(io::Error::other("Invalid speed, distance or angle measurement"));
+            }
         }
         Ok(self)
     }
@@ -227,6 +275,17 @@ impl ShotNotes {
         log: &mut LiveLog,
         last_frame: Option<u32>,
     ) -> io::Result<Value> {
+        self.start_annotated(id, client_ms, None, log, last_frame)
+    }
+
+    pub fn start_annotated(
+        &mut self,
+        id: &str,
+        client_ms: Option<u64>,
+        annotation: Option<Annotation>,
+        log: &mut LiveLog,
+        last_frame: Option<u32>,
+    ) -> io::Result<Value> {
         if !valid_id(id) {
             return Err(io::Error::other("Invalid capture ID"));
         }
@@ -238,8 +297,17 @@ impl ShotNotes {
                 "A capture is already recording; end it before starting another",
             ));
         }
+        let annotation = annotation.unwrap_or_else(|| {
+            let mut previous = self.captures.values()
+                .max_by(|a, b| a.started.elapsed_s.total_cmp(&b.started.elapsed_s))
+                .map(|capture| capture.annotation.clone()).unwrap_or_default();
+            previous.notes = None;
+            // Measured truth belongs to this attempt, unlike the repeated setup/labels.
+            previous.measurements.clear();
+            previous
+        }).normalized()?;
         let capture = Capture {
-            schema_version: 1,
+            schema_version: 2,
             capture_id: id.into(),
             session_id: self.session_id.clone(),
             state: "recording".into(),
@@ -248,7 +316,7 @@ impl ShotNotes {
             end_reason: None,
             client_start_ms: client_ms,
             client_end_ms: None,
-            annotation: Annotation::default(),
+            annotation,
             annotation_revision: 0,
             frame_count: 0,
             point_count: 0,
@@ -620,6 +688,26 @@ mod tests {
         .normalized()
         .unwrap();
         assert!(empty.notes.is_none());
+    }
+
+    #[test]
+    fn context_and_exact_measurements_are_open_ended_validated_and_legacy_compatible() {
+        let legacy: Annotation = serde_json::from_value(json!({"speed":"low"})).unwrap();
+        assert!(legacy.context.is_empty() && legacy.measurements.is_empty() && legacy.outcome.is_none());
+        let annotation: Annotation = serde_json::from_value(json!({"outcome":"miss",
+            "context":{"room":"  big room  ","custom_support":"pillow moves","empty":" "},
+            "measurements":{"speed_kph":54.2,"direction_deg":-12.0,"distance_m":4.2,"custom_metric_m":1.5}})).unwrap();
+        let annotation = annotation.normalized().unwrap();
+        assert_eq!(annotation.context["room"], "big room");
+        assert!(!annotation.context.contains_key("empty"));
+        assert_eq!(annotation.measurements["custom_metric_m"], 1.5);
+        for invalid in [json!({"context":{"cfg_sha256":"invented"}}),
+            json!({"context":{"bad key":"x"}}), json!({"measurements":{"distance_m":-1}}),
+            json!({"measurements":{"direction_deg":181}}),
+            json!({"measurements":{"speed_mps":1,"speed_kph":3.6}})] {
+            assert!(serde_json::from_value::<Annotation>(invalid).unwrap().normalized().is_err());
+        }
+        assert!(serde_json::from_value::<Annotation>(json!({"measurements":{"distance_m":"four"}})).is_err());
     }
 
     #[test]

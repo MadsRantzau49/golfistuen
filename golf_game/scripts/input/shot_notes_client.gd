@@ -66,10 +66,15 @@ func start_capture() -> String:
 	_sequence+=1
 	var id:="%s-%d"%[_token,_sequence]
 	var now:=int(Time.get_unix_time_from_system()*1000)
+	# Use the newest capture, not the history row currently being inspected.
+	var keys:=sorted_keys()
+	var annotation: Dictionary=annotation_for(keys[0]).duplicate(true) if not keys.is_empty() else {"speed":null,"elevation":null,"direction":null,"notes":null,"outcome":null,"context":{}}
+	annotation.notes=null
+	annotation.measurements={}
 	var record:={"capture_id":id,"session_id":session_id,"state":"starting","started":{"unix_time_ms":now},
-		"annotation":{"speed":null,"elevation":null,"direction":null,"notes":null},"annotation_revision":0}
+		"annotation":annotation,"annotation_revision":0}
 	var key:=key_for(record);records[key]=record;_save_cache();record_changed.emit(key)
-	request("capture_start",{"capture_id":id,"client_time_ms":now})
+	request("capture_start",{"capture_id":id,"client_time_ms":now,"annotation":annotation})
 	return key
 
 
