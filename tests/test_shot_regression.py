@@ -6,6 +6,7 @@ import unittest
 from unittest.mock import patch
 
 from tools import shot_regression as regression
+from tools import shot_regression_service as service
 
 
 class ShotRegressionTest(unittest.TestCase):
@@ -134,6 +135,67 @@ class ShotRegressionTest(unittest.TestCase):
             self.assertEqual(len(cases), 2, "Overlapping roots must not duplicate cases")
             self.assertNotEqual(cases[0]["context"]["cfg_sha256"], cases[1]["context"]["cfg_sha256"])
             self.assertIsNone(cases[0]["annotation"].get("outcome"))
+
+    def test_live_append_does_not_invalidate_a_completed_window_snapshot(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            session = root / "session"
+            session.mkdir()
+            (session / "radar.cfg").write_text("recorded config")
+            event_file = session / "events-000001.jsonl"
+            lines = [json.dumps({"sequence": 1, "type": "frame"}) + "\n",
+                     json.dumps({"sequence": 2, "type": "shot_capture_ended"}) + "\n"]
+            event_file.write_text("".join(lines))
+            case = self.case()
+            case["capture"].update({"capture_id": "shot", "ended": {"event_sequence": 2}})
+            before = regression.snapshot_session(session, [case], root / "snapshot1")
+            with event_file.open("a") as stream:
+                stream.write(json.dumps({"sequence": 3, "type": "frame"}) + "\n")
+                stream.write('{"sequence":4,"partial_uart_write":')
+            after = regression.snapshot_session(session, [case], root / "snapshot2")
+            self.assertEqual(before, after)
+            self.assertEqual((root / "snapshot2/events-000001.jsonl").read_text(), "".join(lines))
+            event_file.write_text("".join(lines).replace('"frame"', '"changed_frame"'))
+            changed = regression.snapshot_session(session, [case], root / "snapshot3")
+            self.assertNotEqual(changed, before)
+
+    def test_ui_worker_discovers_requirements_and_persists_reusable_profiles(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            session = root / "session"
+            (session / "captures").mkdir(parents=True)
+            (session / "deleted-captures").mkdir()
+            (session / "radar.cfg").write_text("cfg")
+            regression.write_json(session / "session.json", {"settings": {"config_path": "/configs/foam-room.cfg"}})
+            record = self.case(speed="high", direction="straight", measurements={"speed_kph": 40})["capture"]
+            record.update({"capture_id": "shot", "session_id": "session"})
+            record["annotation"]["context"] = {"room": "room-a", "launch_surface": "moving pillow"}
+            regression.write_json(session / "captures/shot.json", record)
+            regression.write_json(session / "deleted-captures/deleted.json", {**record, "capture_id": "deleted"})
+            inventory = service.execute(root, "unused", {}, {"type": "regression_inventory"})
+            self.assertEqual(inventory["total"], 1)
+            self.assertEqual(inventory["facets"]["room"][0]["value"], "room-a")
+            self.assertIn("foam-room.cfg", inventory["facets"]["cfg_sha256"][0]["label"])
+            profile = {"schema_version": 1, "where": {"room": "room-a"}, "criteria": {}}
+            prepared = service.execute(root, "unused", {}, {"type": "regression_prepare", "profile": profile})
+            self.assertEqual(prepared["eligible"], 1)
+            self.assertEqual(prepared["ranges"], [{"field": "direction", "label": "straight", "count": 1}])
+            self.assertEqual(prepared["tolerances"][0]["metric"], "speed_kph")
+            service.execute(root, "unused", {}, {"type": "regression_profile_save", "profile": profile, "name": "Foam in room A"})
+            reloaded = service.execute(root, "unused", {}, {"type": "regression_inventory"})
+            self.assertEqual(reloaded["profiles"][0]["profile"], profile)
+            with self.assertRaisesRegex(ValueError, "saved item"):
+                service.execute(root, "unused", {}, {"type": "regression_report", "report_id": "../../outside"})
+
+    def test_ui_report_pages_exclude_large_diagnostic_archives(self):
+        case = regression.evaluate(self.case(), [{"speed_mps": 10}], {})
+        case["recorded_results"] = ["a large diagnostic archive"]
+        report = {"cases": [dict(case, id=str(index)) for index in range(45)], "groups": [], "summary": {}}
+        page = service.view_report(report, {"offset": 20})
+        self.assertEqual(len(page["cases"]), 20)
+        self.assertEqual(page["cases"][0]["id"], "20")
+        self.assertEqual(page["next_offset"], 40)
+        self.assertNotIn("recorded_results", page["cases"][0])
 
 
 if __name__ == "__main__":

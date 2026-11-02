@@ -375,6 +375,12 @@ direction/elevation, travel distance and additional numeric measurements are sav
 alongside the abstract estimates; measured truth starts empty on each new attempt.
 The [regression framework](docs/SHOT_REGRESSION.md) replays matching recordings with
 their actual CFG, operator-chosen numeric ranges/tolerances and baseline comparisons.
+Click **Regression tests** at the top of Shot notes for the integrated guided tool:
+condition dropdowns, numeric criteria forms, background execution, saved criteria
+and comparison reports, plus expected/actual results per shot. Everything runs on
+the connected radar computer. **Delete selected shot** removes a capture from
+history and future test selections, including its local drafts, while preserving
+the shared raw stream. History now includes earlier recording sessions.
 
 See [`docs/SHOT_NOTES.md`](docs/SHOT_NOTES.md). `run_range.py --shot-notes` opens the
 form directly. The standard checks and release builder include `shot_notes_checks.gd`.

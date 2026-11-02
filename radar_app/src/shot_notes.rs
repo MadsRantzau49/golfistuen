@@ -173,6 +173,7 @@ pub struct ShotNotes {
     root: PathBuf,
     session_id: String,
     captures: BTreeMap<String, Capture>,
+    history: BTreeMap<String, Capture>,
     active: Option<String>,
 }
 
@@ -186,7 +187,7 @@ fn valid_id(id: &str) -> bool {
 
 impl ShotNotes {
     pub fn new(log: &LiveLog) -> Self {
-        Self {
+        let mut notes = Self {
             root: log.directory.parent().unwrap().to_owned(),
             session_id: log
                 .directory
@@ -195,8 +196,11 @@ impl ShotNotes {
                 .to_string_lossy()
                 .into_owned(),
             captures: BTreeMap::new(),
+            history: BTreeMap::new(),
             active: None,
-        }
+        };
+        notes.history = notes.load_history();
+        notes
     }
 
     pub fn active_id(&self) -> Option<&str> {
@@ -210,9 +214,34 @@ impl ShotNotes {
             .map(|capture| capture.summary(&self.root))
     }
 
+    fn load_history(&self) -> BTreeMap<String, Capture> {
+        // History spans recordings, rather than disappearing when the service restarts.
+        let mut history = BTreeMap::new();
+        if let Ok(sessions) = fs::read_dir(&self.root) {
+            for session in sessions.flatten() {
+                let name = session.file_name().to_string_lossy().into_owned();
+                if !valid_id(&name) { continue; }
+                if let Ok(entries) = fs::read_dir(session.path().join("captures")) {
+                    for entry in entries.flatten() {
+                        if entry.path().extension().and_then(|v|v.to_str()) != Some("json") { continue; }
+                        if let Ok(file) = File::open(entry.path()) {
+                            if let Ok(capture) = serde_json::from_reader::<_, Capture>(file) {
+                                if capture.session_id == name && entry.path().file_stem().and_then(|v|v.to_str()) == Some(capture.capture_id.as_str()) {
+                                    history.insert(format!("{}/{}",name,capture.capture_id),capture);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        history
+    }
+
     pub fn info(&self, offset: usize) -> Value {
-        let mut captures: Vec<_> = self.captures.values().collect();
-        captures.sort_by(|a, b| b.started.elapsed_s.total_cmp(&a.started.elapsed_s));
+        let mut captures: Vec<_> = self.history.values().filter(|capture|capture.session_id != self.session_id)
+            .chain(self.captures.values()).collect();
+        captures.sort_by(|a, b| b.started.unix_time_ms.cmp(&a.started.unix_time_ms));
         let offset = offset.min(captures.len());
         let selected: Vec<_> = captures
             .iter()
@@ -222,7 +251,8 @@ impl ShotNotes {
             .collect();
         let next = offset + selected.len();
         json!({"type":"notes_info","protocol":1,"session_id":self.session_id,"recording_directory":self.root.join(&self.session_id),
-            "active_capture_id":self.active,"captures":selected,"total_captures":captures.len(),
+            "capabilities":{"capture_delete":true,"regression":true},
+            "active_capture_id":self.active,"captures":selected,"total_captures":captures.len(),"all_sessions":true,
             "next_offset":if next<captures.len() {Some(next)} else {None}})
     }
 
@@ -235,6 +265,41 @@ impl ShotNotes {
             return Err(io::Error::other("Invalid recording directory"));
         }
         Ok(directory.join("captures"))
+    }
+
+    pub fn deleted_keys(&self, keys: &Value) -> Vec<String> {
+        keys.as_array().into_iter().flatten().take(512).filter_map(|key| {
+            let key = key.as_str()?;
+            let (session,id) = key.split_once('/')?;
+            if !valid_id(id) { return None; }
+            let directory = self.directory(session).ok()?.parent()?.join("deleted-captures");
+            directory.join(format!("{id}.json")).is_file().then(||key.to_owned())
+        }).collect()
+    }
+
+    pub fn delete(&mut self, session: &str, id: &str, revision: u64, log: &mut LiveLog) -> io::Result<Value> {
+        if !valid_id(id) { return Err(io::Error::other("Invalid capture ID")); }
+        if session == self.session_id && self.active_id() == Some(id) {
+            return Err(io::Error::other("End the recording before deleting this shot"));
+        }
+        let directory = self.directory(session)?;
+        let archive = directory.parent().unwrap().join("deleted-captures");
+        let source = directory.join(format!("{id}.json"));
+        let target = archive.join(format!("{id}.json"));
+        if !source.exists() && target.is_file() {
+            return Ok(json!({"type":"capture_deleted","session_id":session,"capture_id":id}));
+        }
+        let capture: Capture = serde_json::from_reader(File::open(&source)?)?;
+        if capture.session_id != session || capture.capture_id != id || capture.annotation_revision != revision {
+            return Err(io::Error::other("Shot changed since loading; reload it before deleting"));
+        }
+        fs::create_dir_all(&archive)?;
+        fs::rename(source,target)?;
+        if session == self.session_id { self.captures.remove(id); }
+        self.history.remove(&format!("{session}/{id}"));
+        log.event("shot_capture_deleted",json!({"session_id":session,"capture_id":id}))?;
+        log.checkpoint()?;
+        Ok(json!({"type":"capture_deleted","session_id":session,"capture_id":id}))
     }
 
     fn persist(&self, capture: &Capture) -> io::Result<()> {
@@ -288,6 +353,9 @@ impl ShotNotes {
     ) -> io::Result<Value> {
         if !valid_id(id) {
             return Err(io::Error::other("Invalid capture ID"));
+        }
+        if self.directory(&self.session_id)?.parent().unwrap().join("deleted-captures").join(format!("{id}.json")).exists() {
+            return Err(io::Error::other("This capture was deleted; start a new shot"));
         }
         if let Some(existing) = self.captures.get(id) {
             return Ok(existing.summary(&self.root));
@@ -436,6 +504,8 @@ impl ShotNotes {
         let summary = capture.summary(&self.root);
         if session == self.session_id {
             self.captures.insert(id.into(), capture);
+        } else {
+            self.history.insert(format!("{session}/{id}"),capture);
         }
         Ok(summary)
     }
@@ -688,6 +758,34 @@ mod tests {
         .normalized()
         .unwrap();
         assert!(empty.notes.is_none());
+    }
+
+    #[test]
+    fn deletion_survives_restarts_and_does_not_remove_shared_recordings() {
+        let root = std::env::temp_dir().join(format!("shot-delete-{}-{}",std::process::id(),SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()));
+        let mut log = LiveLog::in_directory(&root,json!({}),"cfg").unwrap();
+        let mut notes = ShotNotes::new(&log);
+        let capture = notes.start("remove-me",None,&mut log,None).unwrap();
+        let session = capture["session_id"].as_str().unwrap();
+        assert!(notes.delete(session,"remove-me",0,&mut log).is_err());
+        notes.end("remove-me",None,"space_stop",&mut log,None).unwrap();
+        let next_log = LiveLog::in_directory(&root,json!({}),"cfg").unwrap();
+        let other = ShotNotes::new(&next_log);
+        assert_eq!(other.info(0)["total_captures"],1);
+        assert!(notes.delete(session,"remove-me",1,&mut log).is_err());
+        notes.delete(session,"remove-me",0,&mut log).unwrap();
+        assert_eq!(notes.info(0)["total_captures"],0);
+        assert!(!log.directory.join("captures/remove-me.json").exists());
+        assert!(log.directory.join("deleted-captures/remove-me.json").is_file());
+        assert!(log.directory.join("raw-000001.dat").is_file());
+        assert!(notes.start("remove-me",None,&mut log,None).is_err());
+        let mut restored = ShotNotes::new(&next_log);
+        assert_eq!(restored.info(0)["total_captures"],0);
+        assert!(restored.get(session,"remove-me").is_err());
+        assert_eq!(restored.deleted_keys(&json!([format!("{session}/remove-me")])),vec![format!("{session}/remove-me")]);
+        assert_eq!(restored.delete(session,"remove-me",0,&mut log).unwrap()["type"],"capture_deleted");
+        drop((notes,restored,other,log,next_log));
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

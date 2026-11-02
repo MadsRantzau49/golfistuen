@@ -4,3 +4,4 @@ pub mod processing;
 pub mod live;
 pub mod live_logging;
 pub mod shot_notes;
+pub mod regression_service;

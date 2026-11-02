@@ -157,9 +157,16 @@ elevation in degrees, or actual travel distance in metres. Left is negative/righ
 positive. Unknown measurements stay empty; zero means a measured zero. Extra
 numeric measurements are supported. Exact measurements belong to one attempt and
 start empty on the next. They override abstract labels during regression testing.
-Use the developer's shot-regression tool to choose numeric ranges/tolerances and
-compare detector versions on matching contexts. Distance testing needs a compatible
+Click Regression tests at the top of Shot notes. Choose matching conditions, click
+Next, enter numeric ranges/tolerances, and run tests. You can save criteria and
+compare with a saved result next time. Results explain what passed/failed and show
+expected versus actual values per shot. No testing commands are needed. Tests run
+on the connected radar computer using its current detector. Distance needs a compatible
 distance estimator; the current radar only estimates launch speed and angles.
+
+Select a shot in history and click Delete selected shot to remove it from notes and
+future tests. Shared raw recordings are retained. End the current capture before
+deleting it; unfinished captures from older sessions can be deleted too.
 
 Other notes default to None. You can describe approximate distance/height or
 anything else useful (for example, about 4 m forward and 2 m high). Descriptions

@@ -178,7 +178,14 @@ Context and qualitative labels carry into the next shot. Optional exact measured
 **km/h (km/t), direction, elevation, travel distance and future numeric metrics**
 can be entered alongside the abstract labels; exact measurements belong to one shot.
 
-Use these captures as a context-filtered regression dataset:
+Click **Regression tests** at the top of Shot notes for the guided testing tool:
+choose recordings from condition dropdowns, enter pass criteria, run tests, and
+compare with a saved result. Named criteria and reports persist on the radar
+computer; the game needs no testing commands or local Python. **Delete selected
+shot** removes unwanted captures from history and future tests while retaining the
+shared radar stream.
+
+The optional command-line equivalent is:
 
 ```bash
 python3 tools/shot_regression.py configure logs/radar-live --profile configs/shot-criteria.json

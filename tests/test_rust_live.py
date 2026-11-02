@@ -255,6 +255,51 @@ class RustLiveTest(unittest.TestCase):
             self.assertEqual(restored["captures"][0]["end_reason"], "client_disconnected")
             self.assertEqual(next(c for c in restored["captures"] if c["capture_id"] == "notes-hit-1")["annotation"], annotation)
             self.assertFalse(any(message["type"] == "shot" for message in messages[notes_start:]), "Notes capture must not deliver gameplay strokes")
+
+            def regression_tool(kind, **fields):
+                request = kind + "-" + str(time.monotonic_ns())
+                command(kind, request, **fields)
+                status = receive_until(lambda message: message.get("request_id") == request)
+                self.assertEqual(status["type"], "regression_status", status)
+                for index in range(100):
+                    if status.get("state") == "complete":
+                        result = status["result"]
+                        self.assertNotEqual(result["type"], "regression_error", result)
+                        return result
+                    time.sleep(.03)
+                    poll = request + "-poll-" + str(index)
+                    command("regression_poll", poll)
+                    status = receive_until(lambda message: message.get("request_id") == poll)
+                self.fail("Background regression task did not finish")
+
+            catalog = regression_tool("regression_inventory")
+            self.assertEqual(catalog["total"], 3)
+            ui_profile = {"schema_version": 1, "where": {"room": "test-room"},
+                          "criteria": {"tolerances": {"speed_kph": 3, "direction_deg": 3, "elevation_deg": 3}}}
+            prepared = regression_tool("regression_prepare", profile=ui_profile)
+            self.assertEqual(prepared["eligible"], 2)
+            baseline_ui = regression_tool("regression_run", profile=ui_profile, name="First UI run")["report"]
+            self.assertEqual(baseline_ui["summary"]["passed"], 2)
+            compared_ui = regression_tool("regression_run", profile=baseline_ui["profile"], name="Compare while UART logs grow",
+                                          baseline_id=baseline_ui["id"])["report"]
+            self.assertIsNone(compared_ui.get("comparison_error"))
+            self.assertEqual(compared_ui["comparison"]["regressed_count"], 0)
+            regression_tool("regression_profile_save", profile=ui_profile, name="Saved room criteria")
+            self.assertEqual(len(regression_tool("regression_inventory")["profiles"]), 1)
+            loaded_ui = regression_tool("regression_report", report_id=baseline_ui["id"])["report"]
+            self.assertEqual(loaded_ui["summary"], baseline_ui["summary"])
+            command("capture_start", "delete-start", capture_id="delete-me")
+            receive_until(lambda message: message.get("request_id") == "delete-start")
+            command("capture_delete", "delete-active", session_id=info["session_id"], capture_id="delete-me", annotation_revision=0)
+            self.assertEqual(receive_until(lambda message: message.get("request_id") == "delete-active")["type"], "notes_error")
+            command("capture_end", "delete-end", capture_id="delete-me")
+            receive_until(lambda message: message.get("request_id") == "delete-end")
+            command("capture_delete", "delete-saved", session_id=info["session_id"], capture_id="delete-me", annotation_revision=0)
+            self.assertEqual(receive_until(lambda message: message.get("request_id") == "delete-saved")["type"], "capture_deleted")
+            command("notes_list", "check-deletion", known_keys=[info["session_id"] + "/delete-me"])
+            reconciled = receive_until(lambda message: message.get("request_id") == "check-deletion")
+            self.assertIn(info["session_id"] + "/delete-me", reconciled["deleted_keys"])
+            self.assertEqual(reconciled["total_captures"], 3)
             game.close();game = None;notes_mode = False
             time.sleep(0.15)
         finally:
@@ -269,7 +314,7 @@ class RustLiveTest(unittest.TestCase):
             if process.returncode not in (-15, 0):
                 self.fail(f"Rust live service failed: {stdout}\n{stderr}")
         try:
-            sessions = list(Path(log_root.name).iterdir())
+            sessions = [path for path in Path(log_root.name).iterdir() if (path / "session.json").is_file()]
             self.assertEqual(len(sessions), 1)
             session = sessions[0]
             self.assertEqual((session / "radar.cfg").read_text(), (root / "radar_app/configs/golf.cfg").read_text())
@@ -293,8 +338,10 @@ class RustLiveTest(unittest.TestCase):
             self.assertTrue(any(event["type"] == "frame_timeout" for event in events))
             frames = [event["data"] for event in events if event["type"] == "frame"]
             self.assertTrue(any(not event["game_connected"] and event["diagnostics"]["points"] for event in frames))
-            self.assertEqual(sum(event["type"] == "shot_capture_started" for event in events), 3)
-            self.assertEqual(sum(event["type"] == "shot_capture_ended" for event in events), 3)
+            self.assertEqual(sum(event["type"] == "shot_capture_started" for event in events), 4)
+            self.assertEqual(sum(event["type"] == "shot_capture_ended" for event in events), 4)
+            self.assertTrue((session / "deleted-captures/delete-me.json").is_file())
+            self.assertFalse((session / "captures/delete-me.json").exists())
             for capture_id in ["notes-hit-1", "notes-missed-2", "notes-interrupted-3"]:
                 record = json.loads((session / "captures" / f"{capture_id}.json").read_text())
                 linked = [event for event in events if event["type"] == "frame" and event["capture_id"] == capture_id]

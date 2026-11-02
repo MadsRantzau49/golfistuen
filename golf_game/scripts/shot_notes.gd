@@ -47,6 +47,10 @@ var _saved: Label
 var _message: Label
 var _older: Button
 var _export: FileDialog
+var _notes_content: VBoxContainer
+var _regression: ShotRegressionPanel
+var _delete_button: Button
+var _regression_was_running:=false
 
 
 func _ready() -> void:
@@ -55,7 +59,8 @@ func _ready() -> void:
 	client.info_received.connect(_on_info);client.record_changed.connect(_on_record)
 	client.connection_changed.connect(_on_connection);client.status_received.connect(_on_status)
 	client.failed.connect(_show_message);client.operation_failed.connect(_on_error)
-	add_child(client);_refresh_history();_load_form()
+	client.record_removed.connect(_on_removed)
+	add_child(client);_regression.setup(client);_refresh_history();_load_form()
 	if auto_connect:_connect()
 
 
@@ -70,6 +75,8 @@ func _build_ui() -> void:
 	var column:=VBoxContainer.new();column.add_theme_constant_override("separation",12);root.add_child(column)
 	var heading:=HBoxContainer.new();column.add_child(heading)
 	var title:=AppStyle.label("Shot notes",32,AppStyle.CREAM,true);title.size_flags_horizontal=Control.SIZE_EXPAND_FILL;heading.add_child(title)
+	_button(heading,"Shot notes",_show_notes)
+	_button(heading,"Regression tests",_open_regression,true)
 	_button(heading,"← Main menu",func():menu_requested.emit())
 	column.add_child(AppStyle.label("Space to start → take your shot → Space to end → describe what happened.",17,AppStyle.GOLD))
 	var connection:=HBoxContainer.new();column.add_child(connection)
@@ -77,6 +84,10 @@ func _build_ui() -> void:
 	_port=SpinBox.new();_port.min_value=1;_port.max_value=65535;_port.step=1;_port.value=int(GameSettings.get_value("radar_port"));connection.add_child(_port)
 	_button(connection,"Connect / reconnect",_connect)
 	_status=AppStyle.label("Connect to the live radar service.",13,AppStyle.MUTED);_status.size_flags_horizontal=Control.SIZE_EXPAND_FILL;_status.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART;connection.add_child(_status)
+	_notes_content=VBoxContainer.new();_notes_content.size_flags_vertical=Control.SIZE_EXPAND_FILL;_notes_content.add_theme_constant_override("separation",12);column.add_child(_notes_content)
+	_regression=ShotRegressionPanel.new();_regression.size_flags_vertical=Control.SIZE_EXPAND_FILL;column.add_child(_regression);_regression.hide()
+	_regression.open_capture_requested.connect(_open_test_capture)
+	column=_notes_content
 	var capture_row:=HBoxContainer.new();capture_row.add_theme_constant_override("separation",20);column.add_child(capture_row)
 	_capture_button=_button(capture_row,"Start shot  [Space]",toggle_capture,true);_capture_button.custom_minimum_size=Vector2(270,54)
 	_state=AppStyle.label("Ready for a timed capture",20,AppStyle.CREAM);_state.size_flags_horizontal=Control.SIZE_EXPAND_FILL;capture_row.add_child(_state)
@@ -94,6 +105,7 @@ func _build_ui() -> void:
 	)
 	_button(left,"Export selected shot…",func():_export.popup_centered_ratio(.6))
 	_button(left,"Copy shot summary",_copy_summary)
+	_delete_button=_button(left,"Delete selected shot",delete_selected)
 	var form_panel:=PanelContainer.new();form_panel.size_flags_horizontal=Control.SIZE_EXPAND_FILL;form_panel.add_theme_stylebox_override("panel",AppStyle.box());body.add_child(form_panel)
 	var scroll:=ScrollContainer.new();scroll.horizontal_scroll_mode=ScrollContainer.SCROLL_MODE_DISABLED;form_panel.add_child(scroll)
 	var form:=VBoxContainer.new();form.size_flags_horizontal=Control.SIZE_EXPAND_FILL;form.size_flags_vertical=Control.SIZE_EXPAND_FILL;form.add_theme_constant_override("separation",12);scroll.add_child(form)
@@ -154,6 +166,7 @@ func set_interactive(enabled: bool, _menu_mode:=false) -> void:
 func toggle_capture() -> void:
 	if client==null or not client.connected or client.session_id.is_empty():_show_message("Connect to the radar service first.");return
 	if not ending_key.is_empty():return
+	if client.regression_running:_show_message("Wait for the regression task to finish before recording a new shot.");return
 	if not recording_key.is_empty():
 		_local_ended=Time.get_ticks_msec();ending_key=recording_key;recording_key=""
 		client.end_capture(ending_key);_flush_current();_state.text="Ending capture…";return
@@ -162,6 +175,32 @@ func toggle_capture() -> void:
 	if key.is_empty():return
 	recording_key=key;selected_key=key;_local_started=Time.get_ticks_msec();_local_ended=0
 	_refresh_history();_load_form();_state.text="Recording · take the shot, then press Space";_capture_button.text="End shot  [Space]"
+
+
+func _show_notes()->void:
+	if _notes_content:_notes_content.show()
+	if _regression:_regression.hide()
+
+
+func _open_regression()->void:
+	if not recording_key.is_empty() or not ending_key.is_empty():_show_message("End this shot before opening regression tests.");return
+	_flush_current();_notes_content.hide();_regression.show();_regression.open()
+
+
+func _open_test_capture(session:String,capture:String)->void:
+	_show_notes();_flush_current();selected_key=session+"/"+capture
+	_refresh_history();_load_form();client.request("capture_get",{"session_id":session,"capture_id":capture})
+
+
+func delete_selected()->void:
+	if client==null or selected_key.is_empty():return
+	_save_at=-1;client.delete_capture(selected_key)
+
+
+func _on_removed(key:String)->void:
+	if selected_key==key:
+		var keys:=client.sorted_keys();selected_key=str(keys[0]) if not keys.is_empty() else ""
+	_refresh_history();_load_form();_show_message("Shot removed from history and future tests. Shared raw radar recordings are retained.")
 
 
 func _preset_clicked(field: String, code: String, button: Button) -> void:
@@ -272,30 +311,31 @@ func _description(annotation: Dictionary) -> String:
 func _load_form() -> void:
 	_updating=true
 	var annotation: Dictionary=client.annotation_for(selected_key) if client!=null else {}
+	var can_edit:=not selected_key.is_empty() and client!=null and not client.regression_running
 	for field in _presets:
 		for code in _presets[field]:
-			var button: Button=_presets[field][code];button.disabled=selected_key.is_empty();button.set_pressed_no_signal(annotation.get(field)==code)
-	_notes.editable=not selected_key.is_empty()
+			var button: Button=_presets[field][code];button.disabled=not can_edit;button.set_pressed_no_signal(annotation.get(field)==code)
+	_notes.editable=can_edit
 	var text:=str(annotation.get("notes","")) if annotation.get("notes")!=null else ""
 	if _notes.text!=text:_notes.text=text
 	var context: Dictionary=annotation.get("context",{}).duplicate(true)
 	for field in _context_inputs:
-		var input: LineEdit=_context_inputs[field];input.editable=not selected_key.is_empty()
+		var input: LineEdit=_context_inputs[field];input.editable=can_edit
 		var value:=str(context.get(field,""))
 		if input.text!=value:input.text=value
 		context.erase(field)
-	_extra_context.editable=not selected_key.is_empty()
+	_extra_context.editable=can_edit
 	# Do not replace valid JSON while the operator is typing it.
 	var parser:=JSON.new()
 	var current_extra: Variant=parser.data if parser.parse(_extra_context.text if not _extra_context.text.is_empty() else "{}")==OK else null
 	if current_extra!=context and not _extra_context.has_focus():_extra_context.text=JSON.stringify(context)
 	var measurements: Dictionary=annotation.get("measurements",{}).duplicate(true)
 	for field in _measurement_inputs:
-		var input: LineEdit=_measurement_inputs[field];input.editable=not selected_key.is_empty()
+		var input: LineEdit=_measurement_inputs[field];input.editable=can_edit
 		var value:=str(measurements[field]) if measurements.has(field) else ""
 		if not input.has_focus() and input.text!=value:input.text=value
 		measurements.erase(field)
-	_extra_measurements.editable=not selected_key.is_empty()
+	_extra_measurements.editable=can_edit
 	if not _extra_measurements.has_focus():_extra_measurements.text=JSON.stringify(measurements)
 	_summary.text=_description(annotation) if not selected_key.is_empty() else "Press Space to create the first shot. Estimates and notes can be filled in afterwards."
 	_updating=false;_update_saved_status()
@@ -331,6 +371,7 @@ func _update_saved_status() -> void:
 	if client.drafts.has(selected_key):
 		if not client.local_backup_ok:_saved.text="Draft is in memory · save/export before leaving"
 		else:_saved.text="Description saved locally · syncing…" if client.connected else "Description saved locally · reconnect to sync"
+	elif not client.records.has(selected_key):_saved.text="Loading saved shot…"
 	elif client.records[selected_key].get("state")=="starting":_saved.text="Waiting for capture acknowledgement…"
 	else:_saved.text="Description saved with radar logs"
 
@@ -368,6 +409,7 @@ func _on_status(message: Dictionary) -> void:
 
 
 func _on_error(message: Dictionary) -> void:
+	if str(message.get("operation","")).begins_with("regression_"):return
 	if message.get("operation")=="capture_start":recording_key="";ending_key=""
 	elif message.get("operation")=="capture_end":recording_key=ending_key;ending_key=""
 	_state.text="Capture status needs attention · see the message below"
@@ -378,7 +420,12 @@ func _on_error(message: Dictionary) -> void:
 
 func _process(_delta: float) -> void:
 	if not interactive or client==null:return
+	if client.regression_running!=_regression_was_running:
+		_regression_was_running=client.regression_running;_load_form()
 	_capture_button.disabled=not client.connected or client.session_id.is_empty() or not ending_key.is_empty()
+	_capture_button.disabled=_capture_button.disabled or client.regression_running
+	var selected:Dictionary=client.records.get(selected_key,{})
+	_delete_button.disabled=not client.connected or selected_key.is_empty() or client.regression_running or (selected.get("session_id")==client.session_id and selected.get("state") in ["starting","recording"])
 	if _save_at>=0 and Time.get_ticks_msec()>=_save_at:_flush_current()
 	if not recording_key.is_empty():
 		_capture_button.text="End shot  [Space]";_clock.text="%.1f s"%((Time.get_ticks_msec()-_local_started)/1000.0)
@@ -389,7 +436,7 @@ func _process(_delta: float) -> void:
 
 
 func _input(event: InputEvent) -> void:
-	if not interactive or not event is InputEventKey or not event.pressed or event.echo or event.physical_keycode!=KEY_SPACE:return
+	if not interactive or (_regression!=null and _regression.visible) or not event is InputEventKey or not event.pressed or event.echo or event.physical_keycode!=KEY_SPACE:return
 	var focus:=get_viewport().gui_get_focus_owner()
 	if focus is TextEdit or focus is LineEdit:return
 	toggle_capture();get_viewport().set_input_as_handled()

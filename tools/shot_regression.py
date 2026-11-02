@@ -376,10 +376,48 @@ def compare(report, baseline):
 
 def git_provenance():
     def git(*args):
-        result = subprocess.run(["git", *args], cwd=ROOT, capture_output=True, text=True)
+        try:
+            result = subprocess.run(["git", *args], cwd=ROOT, capture_output=True, text=True)
+        except FileNotFoundError:
+            return None
         return result.stdout.strip() if result.returncode == 0 else None
     return {"commit": git("rev-parse", "HEAD"), "working_tree": git("status", "--porcelain"),
             "tracked_diff_sha256": digest(git("diff", "HEAD"))}
+
+
+def snapshot_session(directory, cases, target):
+    """Freeze completed windows, even while the live service appends new events."""
+    target.mkdir()
+    shutil.copyfile(directory / "radar.cfg", target / "radar.cfg")
+    (target / "captures").mkdir()
+    for case in cases:
+        write_json(target / "captures" / (case["capture"]["capture_id"] + ".json"), case["capture"])
+    ends = [case["capture"].get("ended") or {} for case in cases]
+    if any(end and (not isinstance(end.get("event_sequence"), int) or end["event_sequence"] <= 0) for end in ends):
+        raise ValueError(f"A selected window has no valid end-event marker: {directory}")
+    cutoff = max((end.get("event_sequence", 0) for end in ends), default=0)
+    source = hashlib.sha256()
+    last = 0
+    paths = sorted(directory.glob("events-*.jsonl"))
+    if not paths:
+        raise ValueError(f"No recorded frame events: {directory}")
+    with (target / "events-000001.jsonl").open("wb") as output:
+        for path in paths:
+            if cutoff == 0 or last >= cutoff:
+                break
+            with path.open("rb") as stream:
+                for line in stream:
+                    event = json.loads(line)
+                    last = event["sequence"]
+                    if last > cutoff:
+                        break
+                    source.update(line)
+                    output.write(line)
+                    if last == cutoff:
+                        break
+    if cutoff and last != cutoff:
+        raise ValueError(f"Recording is missing the end event for a selected window: {directory}")
+    return source.hexdigest()
 
 
 def run_suite(cases, profile, binary, detector, adapter_path=None):
@@ -407,13 +445,11 @@ def run_suite(cases, profile, binary, detector, adapter_path=None):
         by_session[case["session"]].append(case)
     for directory, selected in sorted(by_session.items(), key=lambda item: item[0].name):
         print(f"Replaying {directory.name} ({len(selected)} selected captures)…", flush=True)
-        event_paths = sorted(directory.glob("events-*.jsonl"))
-        if not event_paths:
-            raise ValueError(f"No recorded frame events: {directory}")
-        source_hash = digest([(p.name, file_digest(p)) for p in event_paths])
         with tempfile.TemporaryDirectory(prefix="shot-regression-") as temporary:
             output = Path(temporary) / "replay.json"
-            subprocess.run([str(binary), "replay-live", str(directory), str(detector), str(output)],
+            snapshot = Path(temporary) / directory.name
+            source_hash = snapshot_session(directory, selected, snapshot)
+            subprocess.run([str(binary), "replay-live", str(snapshot), str(detector), str(output)],
                            cwd=ROOT, check=True, stdout=subprocess.DEVNULL)
             replay = read_json(output)
         sessions.append({"session": directory.name, "source_events_sha256": source_hash,

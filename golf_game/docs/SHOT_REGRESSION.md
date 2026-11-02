@@ -5,6 +5,38 @@ window is one attempted shot, including missed swings and undetected real hits.
 The runner reuses Rust's real detector and the recorded observations/arming history;
 it does not test against the previous detector's decisions.
 
+## Recommended: use the game UI
+
+Open **Shot notes → Regression tests**, using the same connection as for recording.
+Choose conditions from dropdowns, click **Next**, enter pass ranges/tolerances,
+then click **Run tests on matching recordings**. No terminal commands or JSON are
+needed. The speed-range form uses km/h and converts to the framework's m/s units.
+Save criteria under a name to reuse them later. Results are saved automatically.
+
+Select a saved result under **Compare with a saved result** to restore its matching
+conditions and acceptance criteria. Run again after rebuilding/restarting the radar
+service to evaluate the new running detector. Results show overall and clustered
+counts, measurement errors, individual expected/actual values, and baseline changes.
+You can open any result's shot directly in Shot notes. **Delete selected shot** in
+history removes that capture from future test selections; raw data shared by other
+shots is retained. See [the UI walkthrough](SHOT_NOTES.md#regression-tests-inside-the-game).
+
+Background jobs use the same evaluator described below and run on the radar
+computer. Saved UI profiles/results live under `<recordings-root>/.regression/`.
+The game can run on another computer without local recordings or Python. Reconnect
+and reopen the tool to recover an ongoing/completed task. One task runs at a time;
+capture/annotation/deletion changes wait for it to finish. Historical notes are
+available across service restarts.
+
+Replays freeze each selected session's event prefix through the latest selected
+window's end marker. Continuous logging after those windows cannot invalidate a
+baseline or expose a partially written UART event to replay. Changing recorded
+observations inside that prefix, annotations, selection or criteria still makes the
+comparison invalid. Baselines from the earlier whole-session fingerprint format
+need to be regenerated once.
+
+The remaining sections describe the optional CLI and advanced extensions.
+
 ## 1. Capture independent truth
 
 Open `python3 tools/run_range.py --shot-notes` and record windows as described in

@@ -11,6 +11,7 @@ use crate::radar::device::RadarDevice;
 use crate::radar::frame::RadarFrame;
 use crate::radar::protocol::{PacketDecoder, parse_frame};
 use crate::shot_notes::{Annotation, ShotNotes};
+use crate::regression_service::RegressionService;
 use serde_json::{Value, json};
 
 const FRAME_TIMEOUT: Duration = Duration::from_secs(1);
@@ -138,7 +139,14 @@ impl Client {
                             | "capture_end"
                             | "capture_annotate"
                             | "capture_get"
-                            | "notes_list"
+                             | "notes_list"
+                            | "capture_delete"
+                            | "regression_inventory"
+                            | "regression_prepare"
+                            | "regression_run"
+                            | "regression_poll"
+                            | "regression_profile_save"
+                            | "regression_report"
                     )
                 ) {
                     self.last_heard = Instant::now();
@@ -243,10 +251,30 @@ fn notes_request(
     notes: &mut ShotNotes,
     log: &mut LiveLog,
     frame: Option<u32>,
+    regression: &mut RegressionService,
 ) -> io::Result<()> {
     let result = (|| -> io::Result<Value> {
+        let operation = request["type"].as_str().unwrap_or("");
+        if operation == "regression_poll" { return Ok(regression.poll()); }
+        if operation.starts_with("regression_") {
+            if notes.active_id().is_some() { return Err(io::Error::other("End the current shot before using regression tests")); }
+            return regression.start(request);
+        }
+        if matches!(operation,"capture_start" | "capture_delete" | "capture_annotate") && regression.running() {
+            return Err(io::Error::other("Wait for the regression tool task to finish before changing shots"));
+        }
         match request["type"].as_str() {
-            Some("notes_list") => Ok(notes.info(request["offset"].as_u64().unwrap_or(0) as usize)),
+            Some("notes_list") => {
+                let mut info = notes.info(request["offset"].as_u64().unwrap_or(0) as usize);
+                info["deleted_keys"] = json!(notes.deleted_keys(&request["known_keys"]));
+                Ok(info)
+            }
+            Some("capture_delete") => {
+                let session = request["session_id"].as_str().ok_or_else(||io::Error::other("Missing session ID"))?;
+                let id = request["capture_id"].as_str().ok_or_else(||io::Error::other("Missing capture ID"))?;
+                let revision = request["annotation_revision"].as_u64().ok_or_else(||io::Error::other("Missing annotation revision"))?;
+                notes.delete(session,id,revision,log)
+            }
             Some("capture_get") => {
                 let session = request["session_id"]
                     .as_str()
@@ -330,7 +358,8 @@ pub fn run(
 ) -> io::Result<()> {
     let mut detector = LiveDetector::new(sensor, swing);
     let mut notes = ShotNotes::new(log);
-    let result = run_loop(device, listener, &mut detector, &mut notes, log);
+    let mut regression = RegressionService::new(log.directory.parent().unwrap().to_owned(), detector.configuration()["swing"].clone());
+    let result = run_loop(device, listener, &mut detector, &mut notes, log, &mut regression);
     close_client(
         &mut detector,
         &mut notes,
@@ -353,6 +382,7 @@ fn run_loop(
     detector: &mut LiveDetector,
     notes: &mut ShotNotes,
     log: &mut LiveLog,
+    regression: &mut RegressionService,
 ) -> io::Result<()> {
     listener.set_nonblocking(true)?;
     let session = SystemTime::now()
@@ -434,7 +464,7 @@ fn run_loop(
                     game.notes_announced = true;
                 }
                 for request in std::mem::take(&mut game.requests) {
-                    notes_request(game, &request, detector, notes, log, last_number)?;
+                    notes_request(game, &request, detector, notes, log, last_number, regression)?;
                 }
                 game.arm = notes.active_id().map(str::to_owned);
             }
@@ -547,7 +577,7 @@ fn run_loop(
             heartbeat = Instant::now();
             if let Some(game) = client.as_mut() {
                 game.send(json!({"type":"status","radar_ready":last_frame.is_some_and(|time|time.elapsed()<FRAME_TIMEOUT),"protocol":1,
-                    "arm_id":game.arm,"detection_state":detector.state,"notes_mode":game.notes_enabled,"active_capture_id":notes.active_id(),"last_frame_number":last_number}));
+                    "arm_id":game.arm,"detection_state":detector.state,"notes_mode":game.notes_enabled,"active_capture_id":notes.active_id(),"last_frame_number":last_number,"regression_running":regression.running()}));
                 if game.notes_enabled {
                     if let Some(capture)=notes.active_summary() {game.send(json!({"type":"capture_progress","capture":capture}));}
                 }

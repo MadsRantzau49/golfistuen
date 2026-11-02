@@ -77,8 +77,52 @@ no spin field. Notes can contain up to 4,096 characters.
 Descriptions auto-save after a short typing pause, and **Save description** saves
 immediately. You can select an earlier shot in history and edit its description.
 **Copy shot summary** copies its description and timing references; **Export selected
-shot** saves them as a JSON file. “Load older shots” pages through the current radar
-session's saved captures.
+shot** saves them as a JSON file. “Load older shots” pages through saved captures
+across radar sessions, including after a service restart.
+
+### Delete a shot
+
+Select a shot in history and click **Delete selected shot**. It disappears after
+the radar computer acknowledges deletion, and is excluded from future regression
+tests. You can also delete unfinished shots from older sessions. End the current
+recording before deleting it. Connect to the service to delete a saved shot.
+
+Deletion also clears that shot's local drafts/cache; delayed messages cannot bring
+it back. The capture JSON is moved into that session's `deleted-captures/` directory.
+Shared raw/event files are retained because they also contain other shots. Saved
+test reports remain historical records; deleting a case changes the dataset, so a
+new baseline is needed for comparisons involving that case.
+
+### Regression tests inside the game
+
+Click **Regression tests** at the top of Shot notes. The normal radar host/port
+connection is reused, and the tool guides you through:
+
+1. **Choose recordings:** select room, ball, radar placement, actual CFG and any
+   other recorded conditions from dropdowns, or reuse saved criteria.
+2. **Define what passes:** enter numeric minimum/maximum values for the abstract
+   labels in your selection, and allowed ± differences for exact measurements.
+   Qualitative speed ranges are entered in km/h in this form.
+3. **Run and compare:** run the tests; later select a saved result as the baseline
+   to restore its conditions/criteria and compare another detector version fairly.
+
+Results show pass/fail/unscored counts, detection recall/precision, false-positive
+misses, duplicates, numeric coverage/errors, condition groups and individual shot
+details. Select a result's shot to see expected versus actual values and use
+**Open this shot in Shot notes** to inspect/edit it. Larger reports load in pages.
+
+Criteria and reports are saved on the radar computer, so another game/computer can
+reuse them. Work runs in the background while radar recording remains responsive.
+You can leave the screen and return to the running task. Finish a timed shot before
+opening tests; shot changes wait until the background task finishes. No testing
+commands, JSON files or Python installation are needed on the game computer.
+
+The tool tests the **running radar service's detector and tuning**. Rebuild/restart
+that service after algorithm changes. Python 3 and the two regression scripts are
+required on the radar computer (included in the source checkout). For a relocated
+backend installation, `RADAR_REGRESSION_TOOL` selects `shot_regression_service.py`
+and `RADAR_PYTHON` selects the interpreter. See [SHOT_REGRESSION.md](SHOT_REGRESSION.md)
+for the optional command-line interface and extensibility details.
 
 ## Detector's current estimate
 

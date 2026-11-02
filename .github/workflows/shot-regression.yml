@@ -3,9 +3,9 @@ name: Shot regression framework
 on:
   workflow_dispatch:
   push:
-    paths: ["radar_app/**", "tools/shot_regression.py", "tests/test_shot_regression.py", "tests/test_rust_live.py", "golf_game/scripts/*shot_notes*", "golf_game/scripts/input/shot_notes_client.gd", ".github/workflows/shot-regression.yml"]
+    paths: ["radar_app/**", "tools/shot_regression*.py", "tests/test_shot_regression.py", "tests/test_rust_live.py", "golf_game/scripts/*shot_notes*", "golf_game/scripts/shot_regression.gd", "golf_game/scripts/input/shot_notes_client.gd", ".github/workflows/shot-regression.yml"]
   pull_request:
-    paths: ["radar_app/**", "tools/shot_regression.py", "tests/test_shot_regression.py", "tests/test_rust_live.py", "golf_game/scripts/*shot_notes*", "golf_game/scripts/input/shot_notes_client.gd", ".github/workflows/shot-regression.yml"]
+    paths: ["radar_app/**", "tools/shot_regression*.py", "tests/test_shot_regression.py", "tests/test_rust_live.py", "golf_game/scripts/*shot_notes*", "golf_game/scripts/shot_regression.gd", "golf_game/scripts/input/shot_notes_client.gd", ".github/workflows/shot-regression.yml"]
 
 permissions:
   contents: read
