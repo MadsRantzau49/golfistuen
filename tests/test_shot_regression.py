@@ -1,8 +1,14 @@
 """Independent truth, context selection, scoring and baseline comparability contracts."""
+import base64
 import json
+import math
 from pathlib import Path
+import shutil
+import subprocess
+import sys
 import tempfile
 import unittest
+import zlib
 from unittest.mock import patch
 
 from tools import shot_regression as regression
@@ -196,6 +202,77 @@ class ShotRegressionTest(unittest.TestCase):
         self.assertEqual(page["cases"][0]["id"], "20")
         self.assertEqual(page["next_offset"], 40)
         self.assertNotIn("recorded_results", page["cases"][0])
+
+
+class RecordedSwingReplayTest(unittest.TestCase):
+    """Actual full-swing returns, independent point labels and real dry swings."""
+
+    @classmethod
+    def setUpClass(cls):
+        root = regression.ROOT
+        encoded = (root / "radar_app/tests/fixtures/full_swing_shots.json.zlib.b64").read_bytes()
+        cls.fixture = json.loads(zlib.decompress(base64.b64decode(encoded)))
+        suffix = ".exe" if sys.platform == "win32" else ""
+        cargo = shutil.which("cargo") or str(Path.home() / f".cargo/bin/cargo{suffix}")
+        subprocess.run([cargo, "build", "--manifest-path", str(root / "radar_app/Cargo.toml")], check=True, capture_output=True)
+        cls.binary = root / f"radar_app/target/debug/radar_app{suffix}"
+
+    @staticmethod
+    def rotate(position, pitch):
+        x, y, z = position[:3]
+        c, s = math.cos(math.radians(pitch)), math.sin(math.radians(pitch))
+        return [x, c * y - s * z, s * y + c * z]
+
+    def test_separate_flight_is_recovered_without_promoting_dry_swings_or_club_tails(self):
+        scenarios = [(variant, pitch) for pitch in (0, 30) for variant in ("original", "ball_removed", "ball_only")]
+        for variant, pitch in scenarios:
+            with self.subTest(variant=variant, pitch=pitch), tempfile.TemporaryDirectory() as temporary:
+                session = Path(temporary)
+                (session / "captures").mkdir()
+                (session / "radar.cfg").write_text(self.fixture["radar_cfg"])
+                tuning = regression.read_json(regression.ROOT / "radar_app/configs/swing.json")
+                tuning.update({"forward_axis": self.rotate([0, 1, 0], pitch), "up_axis": self.rotate([0, 0, 1], pitch)})
+                regression.write_json(session / "detector.json", tuning)
+                sequence = 0
+                with (session / "events-000001.jsonl").open("w") as stream:
+                    for capture in self.fixture["captures"]:
+                        frames = {f["frame_number"]: f["points"] for f in capture["frames"]}
+                        record = {"capture_id": capture["name"], "session_id": session.name, "state": "complete",
+                                  "annotation": {"outcome": capture["outcome"]},
+                                  "started": {"elapsed_s": capture["first_frame"] * .02}, "confirmed_balls": 0,
+                                  "detector_results": []}
+                        for number in range(capture["first_frame"], capture["last_frame"] + 1):
+                            points = [{**dict(zip(("x", "y", "z"), self.rotate(row, pitch))), "radial_velocity": row[3],
+                                       "snr_db": row[4], "noise_db": 0}
+                                      for row in frames.get(number, [])
+                                      if not (variant == "ball_removed" and row[5])
+                                      and not (variant == "ball_only" and not row[5])]
+                            sequence += 1
+                            stream.write(json.dumps({"sequence": sequence, "type": "frame", "capture_id": capture["name"],
+                                "data": {"arm_id": capture["name"], "diagnostics": {"frame_number": number, "points": points}}}) + "\n")
+                        sequence += 1
+                        stream.write(json.dumps({"sequence": sequence, "type": "shot_capture_ended", "data": {"capture": record}}) + "\n")
+                        regression.write_json(session / "captures" / (capture["name"] + ".json"), record)
+                report_path = session / "report.json"
+                subprocess.run([str(self.binary), "replay-live", str(session),
+                                str(session / "detector.json"), str(report_path)],
+                               check=True, capture_output=True)
+                report = regression.read_json(report_path)
+                predictions = {c["capture_id"]: c for c in report["captures"]}
+                for capture in self.fixture["captures"]:
+                    expected = 1 if variant == "original" and capture["outcome"] == "hit" else 0
+                    actual = predictions[capture["name"]]["replayed_confirmed_balls"]
+                    self.assertEqual(actual, expected, (capture["name"], variant, predictions[capture["name"]]))
+                    if not expected:
+                        continue
+                    independent_ball = [(f["frame_number"], row) for f in capture["frames"] for row in f["points"] if row[5]]
+                    selected = [a for a in report["attempts"] if a.get("shot") and a["capture_id"] == capture["name"]]
+                    for sample in selected[0]["report"]["selected_observations"]:
+                        self.assertTrue(any(number == sample["frame_number"]
+                                            and math.dist(self.rotate(row, pitch), sample["position"]) < 1e-5
+                                            and abs(row[3] - sample["radial_velocity"]) < 1e-5
+                                            for number, row in independent_ball),
+                                        f"Selected a club/noise return instead of independently labelled ball: {sample}")
 
 
 if __name__ == "__main__":

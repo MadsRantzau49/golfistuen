@@ -320,7 +320,7 @@ class RustLiveTest(unittest.TestCase):
             self.assertEqual((session / "radar.cfg").read_text(), (root / "radar_app/configs/golf.cfg").read_text())
             metadata = json.loads((session / "session.json").read_text())
             self.assertAlmostEqual(metadata["settings"]["detector"]["sensor"]["range_resolution_m"], 0.1953125)
-            self.assertEqual(metadata["settings"]["detector"]["algorithm"], "backward_outgoing_club_reach_v2")
+            self.assertEqual(metadata["settings"]["detector"]["algorithm"], "backward_independent_split_v3")
             captured = b"".join(path.read_bytes() for path in sorted(session.glob("raw-*.dat")))
             self.assertEqual(captured, sent_bytes, "Capture must preserve every UART byte, including noise and unarmed frames")
             events = [json.loads(line) for path in sorted(session.glob("events-*.jsonl"))

@@ -9,6 +9,8 @@ use serde_json::{Value, json};
 use std::collections::{BTreeMap, VecDeque};
 use std::time::Instant;
 
+const ALGORITHM: &str = "backward_independent_split_v3";
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct SwingConfig {
@@ -205,7 +207,7 @@ impl ShotDetector {
         self.next_track
     }
     pub fn configuration(&self) -> Value {
-        json!({"algorithm":"backward_outgoing_club_reach_v2","selection":"furthest_valid_outgoing_path","sensor":self.sensor,
+        json!({"algorithm":ALGORITHM,"selection":"furthest_valid_outgoing_path","sensor":self.sensor,
             "tracking":{"frame_period_s":self.sensor.frame_period_s},"swing":self.config,
             "range_sigma_m":self.sensor.range_sigma(),"doppler_sigma_mps":self.sensor.doppler_sigma(),"motion_threshold_mps":self.motion_threshold()})
     }
@@ -261,7 +263,7 @@ impl ShotDetector {
         reason: Option<&str>,
         analysis: &BackwardAnalysis,
     ) -> Value {
-        json!({"start_frame":start,"outcome":outcome,"abort_reason":reason,"algorithm":"backward_outgoing_club_reach_v2",
+        json!({"start_frame":start,"outcome":outcome,"abort_reason":reason,"algorithm":ALGORITHM,
             "selection":"furthest_valid_outgoing_path","frames_evaluated":self.swing_frames,"points_evaluated":self.swing_points,
             "ball_candidates":self.swing_candidates,"point_rejections":self.point_rejections,"motion_threshold_mps":self.motion_threshold(),
             "tracks":analysis.candidates,"club_strokes":analysis.club_strokes,"backward_fit_evaluations":analysis.fit_evaluations,

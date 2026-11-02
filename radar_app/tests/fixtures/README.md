@@ -14,7 +14,8 @@ early club/ball coincidences are not labelled as independently identifiable ball
 The regression runs the original observations, observations with those independent
 ball returns withheld, and ball-only observations. The withheld-return case is a
 counterfactual club/noise-only test, not an independently recorded dry swing.
-Dedicated real dry-swing recordings are still needed to measure false-positive rate.
+That counterfactual alone does not measure real-world false-positive rate; the
+newer fixture below also includes eight actual missed/dry swings.
 
 Rebuild from the unchanged source recording with:
 
@@ -28,3 +29,32 @@ python3 tools/analyze_live_session.py \
 Frame and velocity bands here are test-data annotations only. Production tracking
 uses sensor uncertainties and observed motion; it does not contain these labels,
 coordinates, frame numbers or speed bands.
+
+## Full-swing and real dry-swing fixture
+
+`full_swing_shots.json.zlib.b64` contains anonymized original moving observations
+from the November recording analysed in `../../NEW_SHOTS_ANALYSIS.md`: two
+independently identifiable club/ball splits (capture suffixes 117 and 176) and
+eight operator-labelled missed/dry swings (138, 188, 192, 195, 198, 201, 204, 207).
+It is a base64-encoded zlib-compressed JSON document to retain full numeric precision
+in a small textual fixture without adding runtime or test dependencies.
+
+The JSON preserves the actual CFG, capture frame windows, and every point accepted
+by the **original recorded non-background point gate**. Empty frames are represented
+by the frame window and gaps. This fixture isolates outgoing-path classification;
+it is not a test of background estimation or the UART decoder. The separate full
+private-session replay rechecks the unfiltered recorded point clouds as well.
+
+Each point is `[x, y, z, radial_velocity, snr_db, independently_labelled_ball]`.
+Ball labels were assigned by inspecting the separate coherent outgoing bands:
+
+- `split_tail`: frames 47255–47266, radial speeds 10–12 m/s.
+- `split_flight`: frames 63182–63193, radial speeds 8.5–10.2 m/s.
+- All eight dry/missed swings have no ball-labelled points.
+
+These bands are fixture annotations only, not production detector gates or targets
+copied from a fitted launch estimate. No operator notes, addresses or room names
+are included. `tests.test_shot_regression.RecordedSwingReplayTest` decodes the fixture
+using Python's standard library and exercises the actual Rust replay with original,
+ball-withheld and ball-only inputs, both unchanged and rigidly rotated with matching
+mounting axes. It verifies the selected observations against the independent labels.

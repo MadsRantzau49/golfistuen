@@ -507,7 +507,7 @@ fn evidence(
     })
 }
 
-fn assess(
+fn assess_conservative(
     candidate: &Candidate,
     strokes: &[ClubStroke],
     all: &[Sample],
@@ -660,6 +660,167 @@ fn assess(
     (reason, Some(proof))
 }
 
+struct ValidationBudget {
+    remaining: usize,
+    exhausted: bool,
+}
+
+/// Quantized Doppler variations along one ball must not manufacture its own club.
+fn one_flight_explains_both(
+    candidate: &Candidate,
+    proof: &ClubEvidence,
+    sensor: &SensorModel,
+    config: &SwingConfig,
+    budget: &mut ValidationBudget,
+) -> bool {
+    if budget.remaining == 0 {
+        budget.exhausted = true;
+        return true;
+    }
+    budget.remaining -= 1;
+    let samples: BTreeMap<_, _> = candidate
+        .observations
+        .iter()
+        .chain(&proof.parent_samples)
+        .map(|sample| (sample.id, sample.clone()))
+        .collect();
+    let mut combined: Vec<_> = samples.into_values().collect();
+    combined.sort_by_key(|sample| (sample.frame_number, sample.id));
+    fit_flight(&combined, sensor, config)
+        .is_some_and(|fit| fit.reduced_chi_squared <= fit.chi_squared_limit)
+}
+
+/// A branch that switches from club to ball can share an early club prefix with
+/// the real braking stroke. Unioning both branches then puts the ball inside its
+/// own "club envelope". Resolve this ambiguity only with an independently braking
+/// reference and actual simultaneous, growing separation -- never by shortening
+/// the envelope of a lone object and calling its tail a ball.
+fn independent_split(
+    candidate: &Candidate,
+    strokes: &[ClubStroke],
+    sensor: &SensorModel,
+    config: &SwingConfig,
+    budget: &mut ValidationBudget,
+) -> Option<ClubEvidence> {
+    let fit = candidate.fit.as_ref()?;
+    let gravity = unit(config.up_axis).map(|value| -GRAVITY_MPS2 * value);
+    let projection = candidate
+        .observations
+        .iter()
+        .map(|sample| dot(gravity, unit(sample.position)).abs())
+        .fold(0.0, f64::max);
+    let angular =
+        config.elevation_resolution_sine / 12.0_f64.sqrt() * config.measurement_uncertainty_scale;
+    let loss_rate = projection
+        + config.separation_sigma * GRAVITY_MPS2 * angular
+        + config.drag_acceleration(norm(fit.velocity));
+    let noise = config.separation_sigma
+        * 2.0_f64.sqrt()
+        * sensor.doppler_sigma()
+        * config.measurement_uncertainty_scale;
+    let first = candidate.observations.first()?.frame_number;
+    let mut previous_max = f64::NEG_INFINITY;
+    for sample in &candidate.observations {
+        // Radial acceleration includes a nonnegative transverse-motion term.
+        // Thus a free outgoing object cannot lose Doppler speed faster than
+        // projected gravity + drag. Check the whole path, not only each edge:
+        // per-edge quantization allowances must not accumulate into club braking.
+        let compensated = sample.radial_velocity
+            + loss_rate * (sample.frame_number - first) as f64 * sensor.frame_period_s;
+        if previous_max - compensated > noise {
+            return None;
+        }
+        previous_max = previous_max.max(compensated);
+    }
+    let child_ids: BTreeSet<_> = candidate.observations.iter().map(|s| s.id).collect();
+    strokes
+        .iter()
+        .filter_map(|club| {
+            if budget.exhausted {
+                return None;
+            }
+            let independent: Vec<_> = club
+                .observations
+                .iter()
+                .filter(|sample| !child_ids.contains(&sample.id))
+                .cloned()
+                .collect();
+            if independent.len() < config.min_swing_observations
+                || !independent
+                    .windows(2)
+                    .all(|pair| edge(&pair[0], &pair[1], sensor, config, false).is_some())
+            {
+                return None;
+            }
+            // Revalidate the whole remaining reference; the removed candidate must
+            // not have supplied its braking evidence or its range/Doppler consistency.
+            let reference = stroke(
+                Path {
+                    samples: independent,
+                    fit: None,
+                    cost: 0.0,
+                },
+                sensor,
+                config,
+            )?;
+            let mut proof = evidence(candidate, &reference, sensor, config)?;
+            if proof.simultaneous_frames < config.min_separation_frames
+                || proof.concurrent_frontier_significance <= config.separation_sigma
+                || proof.relative_velocity_gain_mps <= proof.required_velocity_gain_mps
+                || one_flight_explains_both(candidate, &proof, sensor, config, budget)
+            {
+                return None;
+            }
+            // A later full follow-through can reach farther than a short visible
+            // flight. Simultaneous independent separation, not that future reach,
+            // establishes which of the two objects is the outgoing candidate.
+            proof.validation_mode = Some("independent_concurrent_outgoing_split");
+            Some(proof)
+        })
+        .max_by(|a, b| {
+            a.simultaneous_frames.cmp(&b.simultaneous_frames).then(
+                a.concurrent_frontier_significance
+                    .total_cmp(&b.concurrent_frontier_significance),
+            )
+        })
+}
+
+fn assess(
+    candidate: &Candidate,
+    strokes: &[ClubStroke],
+    all: &[Sample],
+    sensor: &SensorModel,
+    config: &SwingConfig,
+    budget: &mut ValidationBudget,
+) -> (Option<&'static str>, Option<ClubEvidence>) {
+    if budget.exhausted {
+        return (Some("backward_search_budget_exceeded"), None);
+    }
+    let mut original = assess_conservative(candidate, strokes, all, sensor, config);
+    if original.0.is_none()
+        && original
+            .1
+            .as_ref()
+            .is_some_and(|proof| one_flight_explains_both(candidate, proof, sensor, config, budget))
+    {
+        original.0 = Some("single_free_flight_explains_club_and_candidate");
+    }
+    if matches!(
+        original.0,
+        Some(
+            "no_resolved_outgoing_path_beyond_club"
+                | "club_evidence_shares_the_candidate_observations"
+                | "no_independent_braking_club_and_launch_connection"
+                | "single_free_flight_explains_club_and_candidate"
+        )
+    ) {
+        if let Some(proof) = independent_split(candidate, strokes, sensor, config, budget) {
+            return (None, Some(proof));
+        }
+    }
+    original
+}
+
 pub fn analyze(
     samples: &[Sample],
     sensor: &SensorModel,
@@ -764,10 +925,22 @@ pub fn analyze(
     }
     // Assess before truncating: rejected far/noisy paths must not evict a valid
     // shorter flight from the bounded diagnostic list.
+    let remaining = config.max_backward_fits.saturating_sub(evaluations);
+    let mut budget = ValidationBudget {
+        remaining,
+        exhausted: false,
+    };
     for candidate in &mut paths {
-        let (reason, proof) = assess(candidate, &strokes, &samples, sensor, config);
+        let (reason, proof) = assess(candidate, &strokes, &samples, sensor, config, &mut budget);
         candidate.rejection_reason = reason;
         candidate.club_evidence = proof;
+    }
+    evaluations += remaining - budget.remaining;
+    limited |= budget.exhausted;
+    if limited {
+        for candidate in &mut paths {
+            candidate.rejection_reason = Some("backward_search_budget_exceeded");
+        }
     }
     let selected_id = paths
         .iter()

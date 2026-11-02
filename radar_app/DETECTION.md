@@ -1,5 +1,20 @@
 # Live ball detection and recorded-shot analysis
 
+## Current v3: independently resolved full-swing splits
+
+The new 43-attempt session contains 35 operator-labelled hits and eight labelled
+misses. V3 registers **28/35 hit windows**, versus **26/35** with v2, while retaining
+**0/8 false-positive miss windows** and the same estimates for the original 26
+registered shots. It resolves ball-contaminated club-envelope branches using an
+independently revalidated braking reference, measured concurrent separation and
+a one-object-versus-two-object flight check. Validation work is resource-budgeted.
+The seven remaining labelled hits have sparse or ambiguous separate-flight evidence;
+qualitative direction/elevation labels are not treated as exact truth.
+
+See [the full recording analysis](NEW_SHOTS_ANALYSIS.md) for per-miss explanations,
+negative controls, framing/velocity limitations and **upright radar coverage at
+1.5 m behind the ball**, including ceiling geometry.
+
 ## Regression workflow for detector changes
 
 Use independently annotated Pinewater shot notes as context-clustered test cases.
@@ -161,13 +176,20 @@ The live and replay paths use the same `ShotDetector` implementation:
    Range and Doppler must agree globally, and braking must be sustained beyond a
    single discontinuity. Related braking prefixes are joined into a conservative
    observed envelope. Shared candidate/club measurements remain in that envelope:
-   removing them would let the last part of one club path validate itself.
+   removing them would let the last part of one club path validate itself. V3 can
+   separately validate a concurrent split against a reference rebuilt without the
+   candidate, but only if that reference independently retains coherent association,
+   sustained braking and measured separation evidence.
 6. **Validate separation.** A path needs preceding swing observations and a
    backward launch connection. It must either extend significantly beyond the
    observed club envelope, or have several actual concurrent independent returns
    ahead of the club plus resolved relative velocity/separation growth. Interpolated
    club poses can fill short gaps but do not replace the minimum actual concurrent
-   evidence. The late-tail mode can work after the club disappears.
+   evidence. The late-tail mode can work after the club disappears. A combined
+   free-flight fit must not explain both supposed objects; otherwise a lone ball's
+   quantized speed changes could create a spurious club reference. For the new
+   independent split, cumulative Doppler braking is bounded over the whole path,
+   not just edge by edge, and relative-velocity gain must be statistically resolved.
 7. **Close on evidence/quiet.** Normal quiet frames resolve a stroke. Unrelated
    moving people need not hold it open: a registered flight and its club envelope
    can close after both stop extending for the association horizon. There is no

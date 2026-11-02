@@ -376,6 +376,38 @@ fn annotated_captures_select_only_the_independently_labelled_ball_not_club_or_fa
 }
 
 #[test]
+fn model_comparison_work_is_budgeted_and_cannot_accept_an_unfinished_validation() {
+    let model = sensor(0.02);
+    let config = SwingConfig::default();
+    let frames = sequence(0.02, 15.0, [0.0, 1.0, 0.0], true, false, false);
+    let samples: Vec<_> = frames
+        .iter()
+        .flat_map(|frame| {
+            frame
+                .points
+                .iter()
+                .filter(|point| point.radial_velocity > 1.0)
+                .map(move |point| (frame.frame_number, point))
+        })
+        .enumerate()
+        .map(|(index, (number, point))| Sample::new(index as u64, number, point))
+        .collect();
+    let full = backward::analyze(&samples, &model, &config, &mut 0);
+    assert!(full.selected_index.is_some() && !full.search_budget_exhausted);
+    let limited_config = SwingConfig {
+        max_backward_fits: full.fit_evaluations - 1,
+        ..config
+    };
+    let limited = backward::analyze(&samples, &model, &limited_config, &mut 0);
+    assert!(limited.search_budget_exhausted);
+    assert!(limited.selected_index.is_none());
+    assert!(limited.fit_evaluations <= limited_config.max_backward_fits);
+    assert!(limited.candidates.iter().all(|candidate| {
+        candidate.rejection_reason == Some("backward_search_budget_exceeded")
+    }));
+}
+
+#[test]
 fn far_noise_walking_person_and_coherent_offset_club_echo_do_not_win_the_frontier() {
     let mut frames = sequence(0.02, 15.0, [0.0, 1.0, 0.0], true, false, false);
     for frame in &mut frames {
