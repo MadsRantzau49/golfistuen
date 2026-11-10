@@ -3,7 +3,7 @@ extends Node
 ## loading, preferences and transitions. The world is reused across menu and play.
 
 signal state_changed(state_name: String)
-enum State { LOADING, MENU, PLAYING, PAUSED, SETTINGS, EXITING, EDITING, HOLES, MATCH_SETUP, SHOT_NOTES }
+enum State { LOADING, MENU, PLAYING, PAUSED, SETTINGS, EXITING, EDITING, HOLES, MATCH_SETUP }
 var state := State.LOADING
 var previous_state := State.MENU
 var range_scene: Node3D
@@ -21,16 +21,11 @@ var resume_state:=State.PLAYING
 var workspace_save_root:="user://holes"
 var clubhouse:ClubhouseStore
 var match_setup:MatchSetup
-var shot_notes:ShotNotesPanel
-var shot_notes_auto_connect:=true
 
 
 func _ready() -> void:
 	get_tree().auto_accept_quit=false
-	var args:=OS.get_cmdline_user_args()
-	clubhouse=ClubhouseStore.new("user://qa-native-clubhouse" if args.has("--smoke-match") or args.has("--capture-match") or args.has("--capture-setup") else "user://clubhouse")
-	if args.has("--smoke-holes") or args.has("--capture-builder") or args.has("--capture-hole") or args.has("--smoke-match") or args.has("--capture-match") or args.has("--capture-setup"):
-		workspace_save_root="user://qa-native-holes"
+	clubhouse=ClubhouseStore.new("user://clubhouse")
 	ui_layer=CanvasLayer.new()
 	ui_layer.layer=50
 	add_child(ui_layer)
@@ -79,17 +74,6 @@ func _world_ready() -> void:
 	await get_tree().create_timer(.35).timeout
 	loading.queue_free()
 	show_menu()
-	if OS.get_cmdline_user_args().has("--range") or OS.get_cmdline_user_args().has("--shot"):
-		enter_range()
-	if OS.get_cmdline_user_args().has("--smoke-app"):
-		_run_packaged_smoke.call_deferred()
-	if OS.get_cmdline_user_args().has("--smoke-holes"):
-		_run_hole_smoke.call_deferred()
-	if OS.get_cmdline_user_args().has("--builder"):open_builder()
-	if OS.get_cmdline_user_args().has("--shot-notes"):open_shot_notes()
-	if OS.get_cmdline_user_args().has("--smoke-match"):_run_match_smoke.call_deferred()
-	if OS.get_cmdline_user_args().has("--capture-app"):
-		_capture_requested.call_deferred()
 
 
 func _set_state(value: State) -> void:
@@ -103,7 +87,6 @@ func show_menu() -> void:
 	_hide_library()
 	_hide_match_setup()
 	_hide_workspace()
-	_hide_shot_notes()
 	range_scene.show();range_scene.process_mode=Node.PROCESS_MODE_INHERIT;active_mode=range_scene
 	_sync_active_environment()
 	range_scene.camera.current=true
@@ -118,7 +101,6 @@ func show_menu() -> void:
 		menu.holes_requested.connect(show_holes)
 		menu.match_requested.connect(open_match_setup)
 		menu.resume_requested.connect(resume_match)
-		menu.shot_notes_requested.connect(open_shot_notes)
 	menu.show()
 	menu.resume_button.visible=clubhouse.has_active()
 	menu.play_button.grab_focus()
@@ -133,7 +115,6 @@ func enter_range() -> void:
 	_clear_pause()
 	_hide_library();_hide_workspace()
 	_hide_match_setup()
-	_hide_shot_notes()
 	range_scene.show();range_scene.process_mode=Node.PROCESS_MODE_INHERIT;active_mode=range_scene
 	_sync_active_environment()
 	range_scene.camera.current=true
@@ -181,7 +162,7 @@ func open_settings(tab_index:=0) -> void:
 	if state in [State.LOADING,State.SETTINGS]:
 		return
 	previous_state=state
-	if state in [State.PLAYING,State.EDITING,State.SHOT_NOTES]:
+	if state in [State.PLAYING,State.EDITING]:
 		active_mode.set_interactive(false,false)
 	settings_panel=PinewaterSettingsPanel.new()
 	settings_panel.initial_tab=tab_index
@@ -193,7 +174,7 @@ func open_settings(tab_index:=0) -> void:
 func close_settings() -> void:
 	_close_settings()
 	_set_state(previous_state)
-	if state in [State.PLAYING,State.EDITING,State.SHOT_NOTES]:
+	if state in [State.PLAYING,State.EDITING]:
 		active_mode.set_interactive(true,false)
 	elif state == State.MENU and menu:
 		menu.play_button.grab_focus()
@@ -252,7 +233,6 @@ func _unhandled_key_input(event: InputEvent) -> void:
 				State.PAUSED: _resume_active()
 				State.SETTINGS: close_settings()
 				State.HOLES: show_menu()
-				State.SHOT_NOTES: show_menu()
 				State.MATCH_SETUP:
 					if match_setup and match_setup.step==1:match_setup.step=0;match_setup._show_step()
 					else:show_menu()
@@ -265,67 +245,6 @@ func _notification(what: int) -> void:
 		return
 	if what == NOTIFICATION_APPLICATION_FOCUS_OUT and state in [State.PLAYING,State.EDITING]:
 		pause_game()
-
-
-func _run_packaged_smoke() -> void:
-	# Runs inside the release executable too; validates packaged resources and flow.
-	enter_range()
-	range_scene.source.fire(42,2,30)
-	for index in range(4800):
-		range_scene._physics_process(BallFlight.STEP)
-		if not range_scene.active: break
-	if range_scene.hud.shot_count != 1:
-		get_tree().quit(1)
-		return
-	pause_game()
-	open_settings()
-	close_settings()
-	show_menu()
-	print("PACKAGED APP PASS: loading → menu → range → shot → pause → settings → menu")
-	await quit_application()
-
-
-func _capture_requested()->void:
-	# QA entry point works in the native release, validating the real player build.
-	var args:=OS.get_cmdline_user_args()
-	var index:=args.find("--capture-app")
-	if DisplayServer.get_name()=="headless" or index+1>=args.size():
-		get_tree().quit(1)
-		return
-	if args.has("--capture-settings"):open_settings()
-	if args.has("--capture-builder"):
-		await open_builder(HoleDefinition.new() if args.has("--blank") else HoleDefinition.demo())
-	if args.has("--capture-hole"):await play_hole(HoleDefinition.demo())
-	if args.has("--capture-setup"):
-		open_match_setup()
-		while match_setup.players.size()<6:match_setup._add_player()
-		if args.has("--course-step"):match_setup.step=1;match_setup._show_step()
-	if args.has("--capture-match"):
-		var roster:Array[GolfPlayer]=[]
-		for player_index in range(6):roster.append(GolfPlayer.new("Player %d"%(player_index+1),player_index))
-		await start_match(LocalGolfMatch.new(roster,GolfCourse.single(HoleDefinition.demo())))
-		if args.has("--capture-map-flight"):
-			var controller:=workspace.competition
-			controller.source.fire(58,0,19);controller._process(.44)
-			for frame in range(250):controller._physics_process(BallFlight.STEP);controller._process(BallFlight.STEP)
-			controller.set_physics_process(false);controller.set_process(false);controller.visual.freeze_interpolation()
-		if args.has("--measure-map"):
-			workspace.competition.course_map.measured_point=workspace.competition.hole.tee.lerp(workspace.competition.hole.cup,.55)
-			workspace.competition.course_map.refresh_units()
-		if args.has("--capture-relief"):workspace.competition._open_relief()
-		if args.has("--capture-scorecard"):workspace.competition._show_completion()
-	if args.has("--capture-flight"):
-		enter_range()
-		range_scene.source.fire(58,0,19)
-		for frame in range(250):range_scene._physics_process(BallFlight.STEP)
-		range_scene.active=false
-		range_scene.visual.freeze_interpolation()
-	await get_tree().create_timer(3).timeout
-	await RenderingServer.frame_post_draw
-	var error:=get_viewport().get_texture().get_image().save_png(args[index+1])
-	print("Native application screenshot: ",args[index+1])
-	print("Render review: ",Engine.get_frames_per_second()," fps / ",Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME)," draw calls")
-	await quit_application(error)
 
 
 func quit_application(exit_code:=0)->void:
@@ -357,7 +276,6 @@ func _resume_active()->void:
 
 
 func show_holes()->void:
-	_hide_shot_notes()
 	_hide_match_setup()
 	_close_settings();_clear_pause();_hide_workspace();_hide_library()
 	if menu:menu.hide()
@@ -402,7 +320,6 @@ func _ensure_workspace()->bool:
 
 
 func _activate_workspace()->void:
-	_hide_shot_notes()
 	_hide_match_setup()
 	_close_settings();_clear_pause();_hide_library()
 	if menu:menu.hide()
@@ -452,29 +369,12 @@ func _hide_match_setup()->void:
 
 
 func open_match_setup(selected:HoleDefinition=null)->void:
-	_hide_shot_notes()
 	_close_settings();_clear_pause();_hide_library();_hide_workspace();_hide_match_setup()
 	if menu:menu.hide()
 	range_scene.show();range_scene.process_mode=Node.PROCESS_MODE_INHERIT;range_scene.set_interactive(false,true);range_scene.camera.current=true;active_mode=range_scene;_sync_active_environment()
 	match_setup=MatchSetup.new();match_setup.store=clubhouse;match_setup.hole_store=workspace.store if workspace else HoleStore.new(workspace_save_root);match_setup.selected_hole=selected
 	ui_layer.add_child(match_setup);match_setup.back_requested.connect(show_menu);match_setup.start_requested.connect(start_match)
 	_set_state(State.MATCH_SETUP);_reveal()
-
-
-func _hide_shot_notes()->void:
-	if shot_notes:
-		shot_notes.set_interactive(false);shot_notes.hide();shot_notes.process_mode=Node.PROCESS_MODE_DISABLED
-
-
-func open_shot_notes()->void:
-	if state==State.LOADING:return
-	_close_settings();_clear_pause();_hide_library();_hide_workspace();_hide_match_setup()
-	if menu:menu.hide()
-	range_scene.set_interactive(false,false);range_scene.hide();range_scene.process_mode=Node.PROCESS_MODE_DISABLED
-	if shot_notes==null:
-		shot_notes=ShotNotesPanel.new();shot_notes.auto_connect=shot_notes_auto_connect;shot_notes.menu_requested.connect(show_menu);add_child(shot_notes)
-	shot_notes.show();shot_notes.process_mode=Node.PROCESS_MODE_INHERIT;shot_notes.set_interactive(true)
-	active_mode=shot_notes;_set_state(State.SHOT_NOTES);_reveal()
 
 
 func start_match(competition:LocalGolfMatch,pending:Dictionary={})->void:
@@ -487,41 +387,3 @@ func resume_match()->void:
 	var saved:=clubhouse.load_active()
 	if saved.is_empty():menu.resume_button.text="Saved round unavailable";menu.resume_button.disabled=true;return
 	await start_match(saved.match,saved.pending)
-
-
-func _run_match_smoke()->void:
-	var roster:Array[GolfPlayer]=[]
-	for index in range(6):roster.append(GolfPlayer.new("Player %d"%(index+1),index))
-	await start_match(LocalGolfMatch.new(roster,GolfCourse.single(HoleDefinition.demo())))
-	var controller:=workspace.competition
-	for index in range(6):
-		controller.source.fire(0,0,0,0);controller._process(.44)
-		for frame in range(5000):
-			controller._physics_process(BallFlight.STEP)
-			if not controller.in_motion:break
-		controller._process(1.1)
-	if controller.match_state.attempts.any(func(round_state:HoleRound)->bool:return round_state.strokes!=1):await quit_application(1);return
-	var saved:=clubhouse.load_active()
-	if saved.is_empty():await quit_application(1);return
-	await start_match(saved.match,saved.pending)
-	pause_game();_resume_active();show_menu()
-	print("PACKAGED MATCH PASS: six players → tee turns → independent scores → disk save/resume → pause → menu")
-	await quit_application()
-
-
-func _run_hole_smoke()->void:
-	var document:=HoleDefinition.new();document.id="native-editor-check";document.title="Native hole check"
-	await open_builder(document)
-	workspace.editor.edit_once(Vector2(0,-45),"green",38)
-	workspace.editor.edit_once(Vector2(12,-45),"cup",2)
-	workspace.editor.save()
-	var loaded:=workspace.store.load_hole(document.id)
-	if loaded==null or not loaded.play_errors().is_empty():await quit_application(1);return
-	await play_hole(loaded)
-	workspace.play.source.fire(26,0,48,0)
-	for frame in range(5000):
-		workspace.play._physics_process(BallFlight.STEP)
-		if not workspace.play.in_motion:break
-	if workspace.play.attempt.state!=HoleRound.State.COMPLETE:await quit_application(1);return
-	print("PACKAGED HOLE PASS: empty builder → paint green/cup → save/load → playable shot → no-putting score")
-	await quit_application()

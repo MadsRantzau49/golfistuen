@@ -14,15 +14,5 @@ bottom, rim and grass/terrain cutout use the saved map diameter.
 native release's integrated authoring/play modes. `hole_result.png` is a gameplay
 review capture of the automatic-green scoring panel.
 
-To reproduce a capture after building:
-
-```bash
-dist/pinewater/0.2.0/Pinewater-linux/Pinewater -- --capture-app /tmp/menu.png
-dist/pinewater/0.2.0/Pinewater-linux/Pinewater -- --range --capture-app /tmp/range.png
-```
-
-Use a graphical desktop. The headless application smoke test is a separate check.
-
-```bash
-godot --path golf_game --script res://tests/capture_follow.gd -- /tmp/follow.png --rolling
-```
+These images are reference captures from earlier builds. Use the release app and
+the Debug shot-input controls to review the current UI and shot presentation.

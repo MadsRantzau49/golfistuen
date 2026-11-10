@@ -12,18 +12,14 @@ After a release build, open the relevant folder and double-click the application
 
 | Platform | Player application |
 | --- | --- |
-| Linux x86-64 | `dist/pinewater/0.2.0/Pinewater-linux/Pinewater` |
-| Windows x86-64 | `dist/pinewater/0.2.0/Pinewater-windows/Pinewater.exe` |
-| macOS universal | Configured export preset; build and validate on macOS before distribution |
+| Linux x86-64 | `golf_game/exports/linux/Pinewater` |
+| Windows x86-64 | `golf_game/exports/windows/Pinewater.exe` |
+| macOS universal | `golf_game/exports/macos/Pinewater.app` |
 
-Portable ZIP downloads, player instructions, licenses, a JSON manifest, and SHA256
-checksums are generated next to the application folders. Players do **not** need
-Python, an installed Godot editor, an internet connection, or the radar backend.
-
-The current Linux and Windows packages are built locally. Linux has runtime and
-graphical verification here; the Windows CI job runs the native Windows smoke
-test. Windows/macOS distribution signing uses publisher credentials and is not
-enabled in this checkout.
+The launcher builds a native release with embedded game assets. Players do **not**
+need Python, an installed Godot editor, an internet connection, or the radar backend
+to run the exported application. Debug / Real is the shot-input selector in the
+release app; Debug supplies simulated shots for UI work.
 
 See [`PLAYER_GUIDE.txt`](PLAYER_GUIDE.txt) for player-facing instructions.
 
@@ -153,39 +149,27 @@ Godot **4.5.1** is pinned for release builds. Python **3.10+** is developer tool
 only. From the repository root:
 
 ```bash
-python3 tools/run_range.py                 # Main menu
-python3 tools/run_range.py --range         # Directly enter practice
-python3 tools/run_range.py --editor        # Godot editor
+python3 tools/run_range.py                 # Build and launch the release app
 python3 tools/run_range.py --check         # Headless checks
 ```
 
 The launcher finds `--godot PATH`, `GODOT_BIN`, or Godot on PATH; otherwise it
 downloads the pinned official engine with SHA512 verification. The engine is
-cached outside the repository. No pip packages are required.
+cached outside the repository. Install the matching Godot 4.5.1 export templates
+once through Godot's export-template manager. No pip packages are required.
 
 ### Build native releases
 
-```bash
-python3 tools/build_range.py --target linux windows
-```
+The launcher imports resources, exports the current platform with
+`--export-release`, and opens that executable. Outputs are listed above. The app
+starts at the main menu; fake shots are available through Debug shot input.
 
-The builder checks the pinned engine version, imports assets, runs contract,
-physics and application tests, installs checksum-verified export templates, then
-exports native release binaries with embedded game data. It smoke-tests the
-executable on its host platform and creates portable packages and checksums.
-The official multi-platform template download is about 1.3 GB, cached once.
-
-`golf_game/export_presets.cfg` also includes a macOS universal preset:
+For a release export without launching, use Godot directly, for example after
+creating `golf_game/exports/linux/`:
 
 ```bash
-python3 tools/build_range.py --target macos
+godot --headless --path golf_game --export-release Linux exports/linux/Pinewater
 ```
-
-`.github/workflows/pinewater-release.yml` performs checked native Linux and Windows
-builds on their respective runners and uploads the packages. It runs on relevant
-pull requests, manual dispatch, and `pinewater-v*` tags. It does not publish a
-storefront release. Configure code signing/notarization with release credentials
-when preparing public distribution.
 
 ### Structure
 
@@ -243,23 +227,19 @@ speed, angle or spin limits. A shot ID is optional (generated locally when absen
 and omitted launch fields default to zero. Numeric IDs and the simple field aliases
 `speed`/`velocity`, `direction`, `elevation`, and `spin` are also accepted. Extra
 metadata is ignored. Shot validation and unit correctness belong to the backend.
-JSON shot files must decode to an object. Display unit preferences do not change
-simulation units; the practice sliders' convenient ranges do not constrain input.
+Display unit preferences do not change simulation units; the practice sliders'
+convenient ranges do not constrain radar input.
 
 `spin_rpm` is **side spin only**, about the vertical axis: negative curves left,
 positive curves right, zero is neutral. It is independent of launch direction and
 does not supply backspin or topspin. Practice controls expose ±4,000 RPM; backend
 values have no such bound. Older payloads without this field default to zero.
 
-```bash
-python3 tools/run_range.py --shot golf_game/examples/shot.json
-```
-
 ```mermaid
 flowchart LR
     App[Application shell] --> Menu[Loading / menu / settings / pause]
     App --> Range[Driving range lifecycle]
-    Demo[Practice UI / JSON file] --> Source[ShotSource]
+    Demo[Debug shot-input UI] --> Source[ShotSource]
     Radar[Rust radar · live TCP] --> Source
     Source --> Contract[GolfShot · backend-owned values]
     Contract --> Range
@@ -329,7 +309,7 @@ detection events. See [`../radar_app/README.md`](../radar_app/README.md) for the
 first-draft pipeline and thresholds.
 
 Rust prints each delivered shot as one JSON line to stdout; configuration and
-connection diagnostics go to stderr. The underlying direct JSON/file API remains
+connection diagnostics go to stderr. The underlying direct payload API remains
 available independently of the live transport and its turn-token deduplication.
 
 ### Simulation scope
@@ -350,13 +330,6 @@ surface sampler. On the driving range, water-hazard rules and scenery impacts ar
 not scored. Custom holes add water/OOB penalties and trunk deflections through the
 shared custom-hole simulator; see the Hole Studio guide.
 Cameras, distance-unit preferences and graphics settings cannot alter shot physics.
-
-## Shot notes
-
-The game still contains the older Shot notes and Regression tests screens, but
-the simplified radar backend does not provide their services. Their historical
-documentation is in [`docs/SHOT_NOTES.md`](docs/SHOT_NOTES.md) and
-[`docs/SHOT_REGRESSION.md`](docs/SHOT_REGRESSION.md).
 
 ## Verification and visual review
 
@@ -382,34 +355,15 @@ pickup/DNF, relief/bunker constraints, generated courses, portraits and disk
 persistence. Application integration exercises six-player setup, generated/saved
 courses, contact-timed swings, in-flight restart without duplicate scoring,
 pause/scorecard isolation, replay, relief confirmation, pickup, hole transitions
-and tied results. Native packages run `--smoke-match` as well as the range and
-hole-builder smoke tests.
+and tied results. These checks run separately from the release app.
 
 Render ordering is deliberate: ball interpolation at priority 0, camera at 10,
 camera-facing trail at 12, obstruction opacity at 15, and close turf at 20. New
 presentation features should preserve this ordering rather than introduce another
 lagging copy of the ball or camera state.
 
-The release executable has a resource/navigation smoke test:
-
-```bash
-dist/pinewater/0.2.0/Pinewater-linux/Pinewater --headless -- --smoke-app
-```
-
-For native screenshots see [`docs/README.md`](docs/README.md). Developer visual
-helpers can capture settings, flight, shot results and history:
-
-```bash
-godot --path golf_game --script res://tests/capture_application.gd -- /tmp/menu.png
-godot --path golf_game --script res://tests/capture_application.gd -- /tmp/settings.png --settings
-godot --path golf_game --script res://tests/capture.gd -- /tmp/flight.png --flight
-godot --path golf_game --script res://tests/capture_follow.gd -- /tmp/rolling.png --rolling
-godot --path golf_game --script res://tests/capture_follow.gd -- /tmp/forest.png --wide --rolling
-godot --path golf_game --script res://tests/capture_follow.gd -- /tmp/spin.png --flight --spin-right
-```
-
-Visual helpers require a graphical desktop. Import once with the launcher before
-direct engine commands on a fresh checkout. `tests/` and `docs/` are excluded from
+Use Debug shot input in the release app for visual UI work. Reference images are
+listed in [`docs/README.md`](docs/README.md). `tests/` and `docs/` are excluded from
 player exports.
 
 ## Notices

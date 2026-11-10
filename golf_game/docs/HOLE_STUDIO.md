@@ -152,15 +152,8 @@ competition additionally supports declared unplayable-ball and house-rule relief
 ## Verification
 
 `python3 tools/run_range.py --check` runs domain, editor, play, application-routing,
-and original range/camera tests. Native releases also run:
-
-```bash
-Pinewater --headless -- --smoke-holes
-```
-
-The native check opens an empty builder, paints a green/cup, saves and reloads the
-document, executes a shot, and verifies no-putting completion using packaged code
-and assets. QA uses a separate data folder.
+and original range/camera tests. Tests run separately from the release app and use
+isolated save folders.
 
 ![Hole Studio](hole_builder.png)
 

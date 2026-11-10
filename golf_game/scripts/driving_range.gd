@@ -65,7 +65,6 @@ func _ready() -> void:
 	radar_source=RadarShotSource.new();radar_source.target=self;radar_source.hud=hud;add_child(radar_source)
 	hud.visible=interactive
 	apply_preferences()
-	_handle_automation()
 	if staged_loading:
 		_finish_loading.call_deferred()
 	else:
@@ -243,20 +242,3 @@ func _refresh_preview() -> void:
 		mesh.surface_add_vertex(points[index])
 	mesh.surface_end()
 	preview_mesh.mesh = mesh
-
-
-func _handle_automation() -> void:
-	# Optional saved-shot startup; interactive and external input use the same path.
-	var args := OS.get_cmdline_user_args()
-	for index in range(args.size()):
-		if args[index] == "--shot" and index + 1 < args.size():
-			var file := FileAccess.open(args[index + 1], FileAccess.READ)
-			if file == null:
-				push_error("Cannot open shot file: " + args[index + 1])
-				get_tree().quit(1)
-				return
-			var payload: Variant = JSON.parse_string(file.get_as_text())
-			if not payload is Dictionary or not receive_shot(payload):
-				push_error("Shot file must contain a JSON object.")
-				get_tree().quit(1)
-				return

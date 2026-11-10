@@ -122,16 +122,5 @@ authoring tests and competitive play. `MatchSetup`, `ScoreboardBar`,
 ## Verification
 
 `python3 tools/run_range.py --check` includes domain and application match suites.
-The checked release build also runs packaged six-player gameplay/save-resume:
-
-```bash
-Pinewater --headless -- --smoke-match
-Pinewater -- --capture-app /tmp/players.png --capture-setup
-Pinewater -- --capture-app /tmp/course.png --capture-setup --course-step
-Pinewater -- --capture-app /tmp/match.png --capture-match
-Pinewater --resolution 1100x720 -- --capture-app /tmp/relief.png --capture-match --capture-relief
-Pinewater -- --capture-app /tmp/scorecard.png --capture-match --capture-scorecard
-```
-
-Capture/smoke paths use isolated clubhouse data. Captures require a graphical
-desktop; tests/docs are excluded from native exports.
+Tests run separately from the release app and use isolated clubhouse data.
+Tests and documentation are excluded from native exports.
