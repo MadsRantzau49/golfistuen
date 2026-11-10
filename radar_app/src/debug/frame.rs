@@ -18,10 +18,16 @@ pub fn print_frames(device: &mut RadarDevice) -> io::Result<()>{
                 while let Some(packet) = decoder.next_packet() {
                     match parse_frame(&packet) {
                         Some(frame) => {
-                            if !frame.points.is_empty(){
-                                println!("{frame:?}")
+                            let points = frame.points;
+
+                            if points.is_empty(){
+                                continue;
                             }
-                        
+                            for point in &points{
+                                if point.radial_velocity > 10.0{
+                                    println!("{point:?}");
+                                }
+                            }                            
                         },
                         None => eprintln!("Failed to decode frame"),
                     }
