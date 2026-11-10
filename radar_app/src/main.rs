@@ -1,6 +1,7 @@
 use radar_app::radar::analysis::analyze_recording;
 use radar_app::radar::configuration::parse_config;
 use radar_app::radar::device::RadarDevice;
+use radar_app::debug::frame::print_frames;
 use std::fs::File;
 use std::io::{self, Write};
 use std::net::TcpListener;
@@ -45,7 +46,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         "record" => {
             let commands = parse_config(&std::fs::read_to_string(default_config)?);
-            let mut device = RadarDevice::new("/dev/ttyUSB0", 115200, "/dev/ttyUSB1", 921600)?;
+            let mut device: RadarDevice = RadarDevice::new("/dev/ttyUSB0", 115200, "/dev/ttyUSB1", 921600)?;
             device.upload_config(&commands)?;
             let result = (|| -> io::Result<usize> {
                 let mut file = File::create("recording.dat")?;
@@ -70,6 +71,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let total_bytes = result?;
             stopped?;
             println!("Recorded {total_bytes} bytes!");
+        }
+
+        "debug" => {
+            let commands = parse_config(&std::fs::read_to_string(default_config)?);
+            let mut device: RadarDevice = RadarDevice::new("/dev/ttyUSB0", 115200, "/dev/ttyUSB1", 921600)?;
+            device.upload_config(&commands)?;
+
+            println!("Printing radar frames. Ctrl+C to exit.");
+            print_frames(&mut device)?;
+
         }
         "help" | "--help" | "-h" => print_usage(),
         _ => {
