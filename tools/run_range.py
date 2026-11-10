@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Launch the standalone range. Python standard library only; no radar imports.
+"""Build and launch Pinewater's native release. Python standard library only.
 
 Uses --godot, GODOT_BIN, an installed Godot 4, or a checksum-verified local
 download, in that order. The engine is cached outside the repository.
@@ -47,7 +47,7 @@ def release_info() -> tuple[str, str, str]:
     try:
         return RELEASES[system, arch]
     except KeyError:
-        raise RuntimeError(f"No automatic Godot download for {system}/{machine}. Install Godot 4.3+ and pass --godot PATH.") from None
+        raise RuntimeError(f"No automatic Godot download for {system}/{machine}. Install Godot {VERSION} and pass --godot PATH.") from None
 
 
 def download_engine() -> Path:
@@ -108,49 +108,49 @@ def run(command: list[str], timeout: int | None = None) -> int:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--godot", help="Path to an existing Godot 4.5+ executable")
-    modes = parser.add_mutually_exclusive_group()
-    modes.add_argument("--check", action="store_true", help="Run headless contract, physics, and integration checks")
-    modes.add_argument("--editor", action="store_true", help="Open the project in the Godot editor")
-    parser.add_argument("--shot", type=Path, help="Launch a shot JSON file; spin_rpm is signed left/right side spin")
+    parser.add_argument("--godot", help=f"Path to a Godot {VERSION} executable")
+    parser.add_argument("--check", action="store_true", help="Run headless contract, physics, and integration checks")
     parser.add_argument("--fullscreen", action="store_true", help="Start the game fullscreen")
-    parser.add_argument("--range", action="store_true", help="Skip the main menu during development")
-    parser.add_argument("--shot-notes", action="store_true", help="Open timed shot capture and description forms")
     args = parser.parse_args()
-    if args.shot and not args.shot.is_file():
-        parser.error(f"Shot file does not exist: {args.shot}")
     binary = find_engine(args.godot)
     version = subprocess.check_output([str(binary), "--version"], text=True, timeout=15).strip()
-    numbers = version.split(".")
-    if len(numbers) < 2 or numbers[0] != "4" or not numbers[1].isdigit() or int(numbers[1]) < 5:
-        raise RuntimeError(f"Godot 4.5+ is required; found {version}.")
+    if not version.startswith(f"{VERSION}.stable"):
+        raise RuntimeError(f"Godot {VERSION} stable is required; found {version}.")
     command = [str(binary), "--path", str(PROJECT)]
     # Registers global classes and imports bundled fonts/textures on a fresh clone.
     result = run(command + ["--headless", "--editor", "--import"], timeout=120)
     if result:
         return result
     if args.check:
-        for script in ("range_checks.gd", "application_checks.gd", "camera_checks.gd", "hole_checks.gd", "hole_workspace_checks.gd", "hole_app_checks.gd", "match_checks.gd", "match_app_checks.gd", "radar_checks.gd", "shot_notes_checks.gd"):
+        for script in ("range_checks.gd", "application_checks.gd", "camera_checks.gd", "hole_checks.gd", "hole_workspace_checks.gd", "hole_app_checks.gd", "match_checks.gd", "match_app_checks.gd", "radar_checks.gd"):
             result = run(command + ["--headless", "--script", f"res://tests/{script}"], timeout=120)
             if result:
                 return result
         return 0
-    if args.editor:
-        return run(command + ["--editor"])
+    system = platform.system()
+    targets = {
+        "Linux": ("Linux", "linux/Pinewater"),
+        "Windows": ("Windows", "windows/Pinewater.exe"),
+        "Darwin": ("macOS", "macos/Pinewater.app"),
+    }
+    if system not in targets:
+        raise RuntimeError(f"No release export preset for {system}.")
+    if system != "Darwin" and platform.machine().lower() not in ("x86_64", "amd64"):
+        raise RuntimeError("The Linux and Windows release presets target x86-64.")
+    preset, relative_path = targets[system]
+    output = PROJECT / "exports" / relative_path
+    output.parent.mkdir(parents=True, exist_ok=True)
+    print(f"Building {preset} release: {output}", flush=True)
+    result = run(command + ["--headless", "--export-release", preset, str(output)], timeout=300)
+    if result:
+        return result
+    launch = [str(output)] if system != "Darwin" else ["open", "-W", str(output)]
     if args.fullscreen:
-        command.append("--fullscreen")
-    user_args = []
-    if args.shot:
-        user_args.extend(["--shot", str(args.shot.resolve())])
-    if args.range:
-        user_args.append("--range")
-    if args.shot_notes:
-        user_args.append("--shot-notes")
-    if user_args:
-        command.extend(["--"] + user_args)
-    print("Opening Pinewater shot notes. Space starts/ends a capture." if args.shot_notes
-          else "Opening Pinewater. Choose Enter the range to play.", flush=True)
-    return run(command)
+        if system == "Darwin":
+            launch.append("--args")
+        launch.append("--fullscreen")
+    print("Opening Pinewater release. Choose Enter the range to play.", flush=True)
+    return run(launch)
 
 
 if __name__ == "__main__":
