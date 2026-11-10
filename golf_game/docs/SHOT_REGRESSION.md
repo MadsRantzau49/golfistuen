@@ -1,5 +1,9 @@
 # Shot-note regression testing
 
+Historical reference: the replay and regression services described here were
+removed when restoring the first-draft radar tracker. These commands are not
+available in the current backend.
+
 Shot notes are the ground-truth dataset for detector changes. One Space-to-Space
 window is one attempted shot, including missed swings and undetected real hits.
 The runner reuses Rust's real detector and the recorded observations/arming history;

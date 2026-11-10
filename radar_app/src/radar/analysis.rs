@@ -1,11 +1,10 @@
 use std::fs::File;
 use std::io::{Read, Result};
 
-use crate::processing::estimation::ShotOutput;
-use crate::processing::shot::{DetectionEvent, ShotDetector, SwingConfig};
-use crate::processing::sensor::SensorModel;
-use crate::radar::configuration::parse_config;
-use crate::radar::protocol::{parse_frame, PacketDecoder};
+use crate::processing::detection::{DetectionConfig, detect_candidates};
+use crate::processing::estimation::{ShotOutput, estimate_shot};
+use crate::processing::tracking::{BallTrack, BallTracker, TrackingConfig};
+use crate::radar::protocol::{PacketDecoder, parse_frame};
 
 #[derive(Debug)]
 pub struct RecordingSummary {
@@ -19,20 +18,36 @@ pub struct RecordingSummary {
     pub shot: Option<ShotOutput>,
 }
 
+pub(crate) fn select_shot(tracks: &[BallTrack]) -> Option<ShotOutput> {
+    tracks
+        .iter()
+        .filter_map(|track| {
+            let shot = estimate_shot(track)?;
+            let first = track.observations.first()?;
+            let last = track.observations.last()?;
+            let displacement = (last.x - first.x)
+                .hypot(last.y - first.y)
+                .hypot(last.z - first.z);
+            let score = displacement * track.observations.len() as f32;
+            Some((score, shot))
+        })
+        .max_by(|a, b| a.0.total_cmp(&b.0))
+        .map(|(_, shot)| shot)
+}
+
 pub fn analyze_recording(path: &str) -> Result<RecordingSummary> {
     let mut file = File::open(path)?;
     let mut decoder = PacketDecoder::new();
-    let mut buffer = [0u8; 8192];
-
-    let path = std::path::Path::new(path);
-    let sidecar = path.with_extension("cfg");
-    let session_config = path.parent().unwrap_or_else(|| std::path::Path::new(".")).join("radar.cfg");
-    let config_path = if sidecar.exists() { sidecar } else if session_config.exists() { session_config }
-        else { std::path::PathBuf::from("configs/golf.cfg") };
-    let sensor = SensorModel::from_commands(&parse_config(&std::fs::read_to_string(config_path)?))
-        .map_err(std::io::Error::other)?;
-    let mut detector = ShotDetector::new(sensor, SwingConfig::default());
-
+    let mut buffer = [0; 8192];
+    let detection = DetectionConfig {
+        min_distance_m: 0.2,
+        max_distance_m: 4.0,
+        min_radial_speed_mps: 2.0,
+        min_snr_db: 10.0,
+    };
+    let tracking = TrackingConfig::default();
+    let mut tracker = BallTracker::new();
+    let mut completed = Vec::new();
     let mut summary = RecordingSummary {
         total_packets: 0,
         total_points: 0,
@@ -46,50 +61,33 @@ pub fn analyze_recording(path: &str) -> Result<RecordingSummary> {
 
     loop {
         let bytes_read = file.read(&mut buffer)?;
-
         if bytes_read == 0 {
             break;
         }
-
         decoder.push(&buffer[..bytes_read]);
-
         while let Some(packet) = decoder.next_packet() {
             let Some(frame) = parse_frame(&packet) else {
                 eprintln!("Failed to decode packet");
                 continue;
             };
-
             summary.total_packets += 1;
             summary.total_points += frame.points.len();
-
             summary.points_with_snr += frame
                 .points
                 .iter()
-                .filter(|point| point.side_info.is_some())
+                .filter(|p| p.side_info.is_some())
                 .count();
-
-            if summary.first_frame.is_none() {
-                summary.first_frame = Some(frame.frame_number);
-            }
-
+            summary.first_frame.get_or_insert(frame.frame_number);
             summary.last_frame = Some(frame.frame_number);
-
-            if let Some(DetectionEvent::BallDetected(shot)) = detector.update(&frame) {
-                // Preserve the CLI's single-shot output; only confirmed balls qualify.
-                if summary.shot.is_none() {
-                    summary.shot = Some(shot);
-                }
-            }
+            let candidates = detect_candidates(&frame, &detection);
+            summary.total_candidates += candidates.len();
+            tracker.update(&frame, &candidates, &tracking);
+            completed.extend(tracker.take_completed_tracks());
         }
     }
-
-    if let Some(DetectionEvent::BallDetected(shot)) = detector.finish() {
-        if summary.shot.is_none() {
-            summary.shot = Some(shot);
-        }
-    }
-    summary.total_candidates = detector.total_candidates;
-    summary.total_tracks_created = detector.total_tracks_created() as usize;
-
+    tracker.finish();
+    completed.extend(tracker.take_completed_tracks());
+    summary.total_tracks_created = tracker.total_tracks_created() as usize;
+    summary.shot = select_shot(&completed);
     Ok(summary)
 }

@@ -1,5 +1,4 @@
 pub mod analysis;
-pub mod replay;
 pub mod configuration;
 pub mod device;
 pub mod frame;

@@ -1,5 +1,9 @@
 # Annotated radar regression observations
 
+Archived observations from the later detector. The first-draft tracker does not
+use these fixtures; its replay/regression runner has been removed. The data is
+retained for reference. The commands below describe the previous tooling.
+
 `annotated_shots.json` contains the seven operator-labelled Space-to-Space captures
 from recording `1793296169926267431-24640`. It preserves original point coordinates,
 radial velocities, SNR and frame numbers, with no client address or free-text notes.

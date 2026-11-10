@@ -1,7 +1,6 @@
 use crate::radar::frame::{RadarFrame, RadarPoint};
-use serde::Serialize;
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone)]
 pub struct TrackObservation {
     pub frame_number: u32,
     pub time_s: f64,
@@ -38,7 +37,7 @@ pub struct BallTrack {
     pub observations: Vec<TrackObservation>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone)]
 pub struct TrackingConfig {
     pub max_speed_mps: f32,
     pub position_tolerance_m: f32,
@@ -124,12 +123,10 @@ impl BallTracker {
                 continue;
             }
 
-            let max_distance =
-                config.max_speed_mps * dt as f32 + config.position_tolerance_m;
+            let max_distance = config.max_speed_mps * dt as f32 + config.position_tolerance_m;
 
             for (candidate_index, point) in candidates.iter().enumerate() {
-                let observation =
-                    TrackObservation::from_point(point, frame_number, time_s);
+                let observation = TrackObservation::from_point(point, frame_number, time_s);
 
                 let distance = last.distance_to(&observation);
 
@@ -363,11 +360,7 @@ mod tests {
         update_with_all_points(&mut tracker, &make_frame(1, &[1.0]), &config);
 
         for frame_number in 2..=4 {
-            update_with_all_points(
-                &mut tracker,
-                &make_frame(frame_number, &[]),
-                &config,
-            );
+            update_with_all_points(&mut tracker, &make_frame(frame_number, &[]), &config);
         }
 
         assert!(tracker.active_tracks().is_empty());

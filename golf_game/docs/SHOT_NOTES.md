@@ -1,5 +1,8 @@
 # Shot notes — Space to start, Space to end
 
+Historical reference: these screens require services removed from the simplified
+radar backend. The current backend supports live gameplay shots only.
+
 Open **Shot notes · timed capture** from the main menu and connect to the same
 radar host/port used by Real mode (normally port 8765).
 

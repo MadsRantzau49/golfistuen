@@ -12,21 +12,17 @@ pub struct ShotOutput {
 }
 
 pub fn estimate_shot(track: &BallTrack) -> Option<ShotOutput> {
-    estimate_shot_with_reason(track).ok()
-}
-
-pub fn estimate_shot_with_reason(track: &BallTrack) -> Result<ShotOutput, &'static str> {
     if track.observations.len() < 3 {
-        return Err("fewer_than_three_observations");
+        return None;
     }
 
-    let first = track.observations.first().unwrap();
-    let last = track.observations.last().unwrap();
+    let first = track.observations.first()?;
+    let last = track.observations.last()?;
 
     let dt = last.time_s - first.time_s;
 
     if dt <= 0.0 {
-        return Err("non_positive_track_duration");
+        return None;
     }
 
     let vx = (last.x - first.x) / dt as f32;
@@ -37,11 +33,11 @@ pub fn estimate_shot_with_reason(track: &BallTrack) -> Result<ShotOutput, &'stat
     let speed = horizontal_speed.hypot(vz);
 
     if !speed.is_finite() || !(2.0..=80.0).contains(&speed) {
-        return Err("track_speed_outside_2_to_80_mps");
+        return None;
     }
 
     if vy <= 0.0 {
-        return Err("track_not_forward");
+        return None;
     }
 
     let displacement = (last.x - first.x)
@@ -49,13 +45,13 @@ pub fn estimate_shot_with_reason(track: &BallTrack) -> Result<ShotOutput, &'stat
         .hypot(last.z - first.z);
 
     if displacement < 0.3 {
-        return Err("track_displacement_below_0_3_m");
+        return None;
     }
 
     let direction = vx.atan2(vy).to_degrees();
     let elevation = vz.atan2(horizontal_speed).to_degrees();
 
-    Ok(ShotOutput {
+    Some(ShotOutput {
         shot_id: format!("shot-{:03}", track.id + 1),
         speed_mps: speed,
         direction_deg: direction,

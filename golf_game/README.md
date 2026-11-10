@@ -275,13 +275,13 @@ flowchart LR
 From the repository root, start the Rust service:
 
 ```bash
-cargo run --release --manifest-path radar_app/Cargo.toml -- live \
-  radar_app/configs/golf.cfg /dev/ttyUSB0 /dev/ttyUSB1 0.0.0.0:8765
+cargo run --manifest-path radar_app/Cargo.toml
 python3 tools/run_range.py
 ```
 
-The CLI accepts `live [config.cfg] [command-port] [data-port] [bind-address:port]`.
-When run inside `radar_app/`, the default config is `configs/golf.cfg`; default
+Bare `cargo run` inside `radar_app/` starts live radar. The CLI also accepts
+`live [config.cfg] [command-port] [data-port] [bind-address:port]`.
+The default config is the crate's `configs/golf.cfg`; default
 UARTs are `/dev/ttyUSB0` at 115200 and `/dev/ttyUSB1` at 921600. Stop other apps
 using those UARTs first. The service configures/starts the radar, continuously
 decodes frames, detects candidates and tracks them, then selects one best valid
@@ -309,7 +309,6 @@ passes accepted payloads to `receive_shot(payload)`. The transport is UTF-8
 {"type":"status","protocol":1,"radar_ready":true,"arm_id":null}
 {"type":"ready","ready":true,"arm_id":"unique-turn-token"}
 {"type":"status","protocol":1,"radar_ready":true,"arm_id":"unique-turn-token"}
-{"type":"detection","arm_id":"unique-turn-token","state":"swing_detected"}
 {"type":"shot","arm_id":"unique-turn-token","shot":{"shot_id":"live-session-1","speed_mps":42.0,"direction_deg":3.0,"elevation_deg":30.0,"spin_rpm":0.0}}
 {"type":"ready","ready":false,"arm_id":""}
 ```
@@ -324,14 +323,10 @@ pause, settings, menus, and frame loss. Pausing disconnects immediately. A broke
 connection retries automatically; shots are never replayed on reconnect or queued
 for later turns. A game heartbeat missing for three seconds drops that client.
 
-The detector first requires motion preceding launch, then confirms a separate,
-diverging outgoing flight using sensor-normalized tracking and independent club
-evidence. `detection` messages carry `swing_detected` or
-`no_ball_detected`, scoped to the current arm. Status heartbeats also carry
-`detection_state` (`waiting_for_swing`, `swing_detected`, or `no_ball_detected`).
-A no-ball result displays a retry indication, preserves the arm and adds no stroke;
-only a confirmed `shot` launches the game. See `radar_app/DETECTION.md` and the root
-README for sensor calibration, the optional `swing.json` settings and recorded-session replay.
+The backend uses the original nearest-distance tracker and first-to-last position
+estimate. It does not separate club motion from ball flight or send swing/no-ball
+detection events. See [`../radar_app/README.md`](../radar_app/README.md) for the
+first-draft pipeline and thresholds.
 
 Rust prints each delivered shot as one JSON line to stdout; configuration and
 connection diagnostics go to stderr. The underlying direct JSON/file API remains
@@ -358,32 +353,10 @@ Cameras, distance-unit preferences and graphics settings cannot alter shot physi
 
 ## Shot notes
 
-Choose **Shot notes · timed capture** in the main menu. **Space** starts a capture;
-the next **Space** ends it. Click qualitative speed, elevation and direction
-estimates, then add optional notes (default None). Every attempt is linked to its
-actual radar log window, including shots the detector missed. Descriptions auto-save
-to per-shot JSON files, with a local draft backup and editable history. Captures
-do not add gameplay strokes.
-The read-only detector estimate updates during capture with registered speed,
-elevation and direction, and is preserved in shot history separately from operator
-descriptions. Short tracks are explicitly marked approximate.
-
-Record independent **hit/miss** truth and freely named test conditions: room,
-radar setup, ball type, launch surface/support movement and custom tags. Conditions
-and qualitative labels carry into the next shot. Optional exact speed (km/h),
-direction/elevation, travel distance and additional numeric measurements are saved
-alongside the abstract estimates; measured truth starts empty on each new attempt.
-The [regression framework](docs/SHOT_REGRESSION.md) replays matching recordings with
-their actual CFG, operator-chosen numeric ranges/tolerances and baseline comparisons.
-Click **Regression tests** at the top of Shot notes for the integrated guided tool:
-condition dropdowns, numeric criteria forms, background execution, saved criteria
-and comparison reports, plus expected/actual results per shot. Everything runs on
-the connected radar computer. **Delete selected shot** removes a capture from
-history and future test selections, including its local drafts, while preserving
-the shared raw stream. History now includes earlier recording sessions.
-
-See [`docs/SHOT_NOTES.md`](docs/SHOT_NOTES.md). `run_range.py --shot-notes` opens the
-form directly. The standard checks and release builder include `shot_notes_checks.gd`.
+The game still contains the older Shot notes and Regression tests screens, but
+the simplified radar backend does not provide their services. Their historical
+documentation is in [`docs/SHOT_NOTES.md`](docs/SHOT_NOTES.md) and
+[`docs/SHOT_REGRESSION.md`](docs/SHOT_REGRESSION.md).
 
 ## Verification and visual review
 
