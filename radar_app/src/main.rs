@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = std::env::args().collect();
     let command = args.get(1).map(String::as_str).unwrap_or("live");
-    let default_config = Path::new(env!("CARGO_MANIFEST_DIR")).join("configs/golf.cfg");
+    let default_config = Path::new(env!("CARGO_MANIFEST_DIR")).join("configs/rughaven.cfg");
 
     match command {
         "live" => {
