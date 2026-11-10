@@ -24,7 +24,7 @@ pub fn print_frames(device: &mut RadarDevice) -> io::Result<()>{
                                 continue;
                             }
                             for point in &points{
-                                if point.radial_velocity > 10.0{
+                                if point.radial_velocity > 5.0{
                                     println!("{point:?}");
                                 } else {
                                     print!("-Slow-");
