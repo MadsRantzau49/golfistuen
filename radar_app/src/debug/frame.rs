@@ -3,7 +3,7 @@ use std::io;
 use crate::radar::device::RadarDevice;
 use crate::radar::protocol::{PacketDecoder, parse_frame};
 
-pub fn print_frames(device: &mut RadarDevice) -> io::Result<()>{
+pub fn print_frames(device: &mut RadarDevice, min_velocity: f32) -> io::Result<()>{
 
     let mut decoder = PacketDecoder::new();
     let mut buffer = [0u8; 8192];
@@ -24,7 +24,7 @@ pub fn print_frames(device: &mut RadarDevice) -> io::Result<()>{
                                 continue;
                             }
                             for point in &points{
-                                if point.radial_velocity > 5.0{
+                                if point.radial_velocity > min_velocity{
                                     println!("{point:?}");
                                 } else {
                                     print!("-Slow-");

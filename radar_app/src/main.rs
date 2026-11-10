@@ -74,12 +74,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         "debug" => {
+            let min_velocity: f32 = args.get(2).and_then(|s| s.parse::<f32>().ok()).unwrap_or(5.0);
             let commands = parse_config(&std::fs::read_to_string(default_config)?);
             let mut device: RadarDevice = RadarDevice::new("/dev/ttyUSB0", 115200, "/dev/ttyUSB1", 921600)?;
             device.upload_config(&commands)?;
 
             println!("Printing radar frames. Ctrl+C to exit.");
-            print_frames(&mut device)?;
+            print_frames(&mut device, min_velocity)?;
 
         }
         "help" | "--help" | "-h" => print_usage(),
