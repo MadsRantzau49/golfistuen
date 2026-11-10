@@ -48,7 +48,7 @@ mod tests {
 
 #[test]
 fn golf_config_is_valid() {
-    let config = include_str!("../../configs/golf.cfg");
+    let config = include_str!("../../configs/rughaven.cfg");
 
     let commands = parse_config(config);
 
