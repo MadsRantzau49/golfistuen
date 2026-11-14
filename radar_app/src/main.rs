@@ -1,7 +1,6 @@
-use radar_app::radar::analysis::analyze_recording;
+use radar_app::debug::frame::print_frames;
 use radar_app::radar::configuration::parse_config;
 use radar_app::radar::device::RadarDevice;
-use radar_app::debug::frame::print_frames;
 use std::fs::File;
 use std::io::{self, Write};
 use std::net::TcpListener;
@@ -20,33 +19,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let data_port = args.get(4).map(String::as_str).unwrap_or("/dev/ttyUSB1");
             let address = args.get(5).map(String::as_str).unwrap_or("0.0.0.0:8765");
             let commands = parse_config(&std::fs::read_to_string(config_path)?);
-            let frame_period_s = frame_period(&commands)?;
             let listener = TcpListener::bind(address)?;
             let mut device = RadarDevice::new(cli_port, 115200, data_port, 921600)?;
             device.upload_config(&commands)?;
             let result = (|| {
                 device.set_data_timeout(Duration::from_millis(20))?;
                 eprintln!(
-                    "Radar listening on {}. Select Real in the golf game; Ctrl+C to exit.",
+                    "Radar acquiring frames; status service on {}. Detection is disabled; Ctrl+C to exit.",
                     listener.local_addr()?
                 );
-                radar_app::live::run(&mut device, listener, frame_period_s)
+                radar_app::live::run(&mut device, listener)
             })();
             let stopped = device.send_command("sensorStop");
             result?;
             stopped?;
         }
-        "analyze" => {
-            let path = args.get(2).map(String::as_str).unwrap_or("recording.dat");
-            let summary = analyze_recording(path)?;
-            let shot = summary
-                .shot
-                .ok_or_else(|| io::Error::other("No valid shot found in recording"))?;
-            println!("{}", serde_json::to_string_pretty(&shot)?);
-        }
         "record" => {
             let commands = parse_config(&std::fs::read_to_string(default_config)?);
-            let mut device: RadarDevice = RadarDevice::new("/dev/ttyUSB0", 115200, "/dev/ttyUSB1", 921600)?;
+            let mut device: RadarDevice =
+                RadarDevice::new("/dev/ttyUSB0", 115200, "/dev/ttyUSB1", 921600)?;
             device.upload_config(&commands)?;
             let result = (|| -> io::Result<usize> {
                 let mut file = File::create("recording.dat")?;
@@ -74,14 +65,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         "debug" => {
-            let min_velocity: f32 = args.get(2).and_then(|s| s.parse::<f32>().ok()).unwrap_or(5.0);
+            let min_velocity: f32 = args
+                .get(2)
+                .and_then(|s| s.parse::<f32>().ok())
+                .unwrap_or(5.0);
             let commands = parse_config(&std::fs::read_to_string(default_config)?);
-            let mut device: RadarDevice = RadarDevice::new("/dev/ttyUSB0", 115200, "/dev/ttyUSB1", 921600)?;
+            let mut device: RadarDevice =
+                RadarDevice::new("/dev/ttyUSB0", 115200, "/dev/ttyUSB1", 921600)?;
             device.upload_config(&commands)?;
 
             println!("Printing radar frames. Ctrl+C to exit.");
             print_frames(&mut device, min_velocity)?;
-
         }
         "help" | "--help" | "-h" => print_usage(),
         _ => {
@@ -92,25 +86,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn frame_period(commands: &[String]) -> io::Result<f64> {
-    let period = commands.iter().find_map(|command| {
-        let fields: Vec<_> = command.split_whitespace().collect();
-        (fields.first() == Some(&"frameCfg"))
-            .then(|| fields.get(5)?.parse::<f64>().ok())
-            .flatten()
-    });
-    match period {
-        Some(ms) if ms.is_finite() && ms > 0.0 => Ok(ms / 1000.0),
-        _ => Err(io::Error::other(
-            "CFG must contain a positive frameCfg period",
-        )),
-    }
-}
-
 fn print_usage() {
     println!("Usage:");
-    println!("  cargo run                         Start live radar with defaults");
+    println!("  cargo run                         Receive live frames (no detection)");
     println!("  cargo run -- live [config.cfg] [command-port] [data-port] [bind-address:port]");
     println!("  cargo run -- record               Record five seconds to recording.dat");
-    println!("  cargo run -- analyze [file.dat]");
 }

@@ -124,14 +124,14 @@ or press Space.
 
 Real: start the Rust radar app in live mode on the radar computer. Enter its IP
 address (127.0.0.1 if it runs on this computer) and port 8765 in the game, then
-click Connect / reconnect. Wait for "READY — SHOOT NOW" before swinging.
-Aim in the game and hit your real ball: a registered shot fires automatically.
-In local golf, the highlighted player receives the shot. Wait for the next ready
-indication before shooting again. Mode changes are disabled while a shot is busy.
+click Connect / reconnect. The Rust app currently receives frames only: the old
+detection and shot-estimation algorithms have been removed for a fresh start.
+The existing "READY — SHOOT NOW" label confirms frame reception and the turn
+connection, but real swings will not register until detection is implemented.
+Use Debug mode to launch simulated shots in the meantime.
 
 The game reconnects automatically if the connection drops. Paused, busy or old
-shots cannot fire later. The current radar estimator supplies speed, direction
-and elevation; it does not measure spin yet. Replay never adds another stroke.
+shots cannot fire later. Replay never adds another stroke.
 Your selected mode and radar address are saved on this computer.
 
 SIDE SPIN
