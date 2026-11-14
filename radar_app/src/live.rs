@@ -7,7 +7,7 @@ use serde_json::{Value, json};
 
 use crate::radar::device::RadarDevice;
 use crate::radar::protocol::{PacketDecoder, parse_frame};
-
+use crate::processing::estimation::ShotOutput;
 const FRAME_TIMEOUT: Duration = Duration::from_secs(1);
 
 struct Client {
@@ -135,11 +135,37 @@ pub fn run(device: &mut RadarDevice, listener: TcpListener) -> io::Result<()> {
             Err(e) => return Err(e),
         }
         while let Some(packet) = decoder.next_packet() {
-            let Some(_frame) = parse_frame(&packet) else {
+            let Some(frame) = parse_frame(&packet) else {
                 continue;
             };
             last_frame = Some(Instant::now());
-            // Decoded RadarFrame is available here for future frame handling.
+            if frame.points.is_empty(){
+                continue;
+            }
+            for point in &frame.points{
+                if point.radial_velocity > 5.0{
+                    let Some(game) = client.as_mut() else{
+                        break;
+                    };
+                    let Some(arm_id) = game.arm.take() else {
+                        break;
+                    };
+                    let shot = ShotOutput {
+                        shot_id: format!("live-{arm_id}"),
+                        speed_mps: point.radial_velocity,
+                        direction_deg: 0.0,
+                        elevation_deg: 22.0,
+                        spin_rpm: 0.0,
+                    };
+                    game.queue(json!({
+                        "type": "shot",
+                        "arm_id": arm_id,
+                        "shot": shot
+                    }))?;
+
+                }
+
+            }
         }
         if heartbeat.elapsed() >= Duration::from_millis(250) {
             heartbeat = Instant::now();
