@@ -18,8 +18,8 @@ struct Client {
     last_heard: Instant,
 }
 fn cal_direction(x: f32, y: f32) -> f32 {
-    let angle = (0.0 - y).atan2(0.0 - x).to_degrees();
-    angle.to_degrees()
+    let angle = (y - 0.0).atan2(x - 0.0).to_degrees();
+    angle
 }
 
 
