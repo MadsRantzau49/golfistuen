@@ -17,6 +17,11 @@ struct Client {
     arm: Option<String>,
     last_heard: Instant,
 }
+fn cal_direction(x: f32, y: f32) -> f32 {
+    let angle = (0.0 - y).atan2(0.0 - x).to_degrees();
+    angle.to_degrees()
+}
+
 
 impl Client {
     fn new(socket: TcpStream) -> io::Result<Self> {
@@ -150,10 +155,12 @@ pub fn run(device: &mut RadarDevice, listener: TcpListener) -> io::Result<()> {
                     let Some(arm_id) = game.arm.take() else {
                         break;
                     };
+                    let direction = cal_direction(point.x, point.y);
+                    println!("Direction= {direction}");
                     let shot: ShotOutput = ShotOutput {
                         shot_id: format!("live-{arm_id}"),
                         speed_mps: point.radial_velocity * 2.0,
-                        direction_deg: 0.0,
+                        direction_deg: direction,
                         elevation_deg: 30.0,
                         spin_rpm: 0.0,
                     };
