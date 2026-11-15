@@ -143,7 +143,7 @@ pub fn run(device: &mut RadarDevice, listener: TcpListener) -> io::Result<()> {
                 continue;
             }
             for point in &frame.points{
-                if point.radial_velocity > 5.0{
+                if point.radial_velocity > 4.0{
                     let Some(game) = client.as_mut() else{
                         break;
                     };
