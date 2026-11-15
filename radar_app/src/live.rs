@@ -152,7 +152,7 @@ pub fn run(device: &mut RadarDevice, listener: TcpListener) -> io::Result<()> {
                     };
                     let shot: ShotOutput = ShotOutput {
                         shot_id: format!("live-{arm_id}"),
-                        speed_mps: point.radial_velocity,
+                        speed_mps: point.radial_velocity * 2.0,
                         direction_deg: 0.0,
                         elevation_deg: 30.0,
                         spin_rpm: 0.0,
