@@ -24,13 +24,10 @@ pub fn print_frames(device: &mut RadarDevice, min_velocity: f32) -> io::Result<(
                                 continue;
                             }
                             for point in &points{
-                                if point.y > 1.0{
-                                    println!("{point:?}");
-                                }
                                 if point.radial_velocity > min_velocity{
-                                    //println!("\n{point:?}\n");
+                                    println!("\n{point:?}\n");
                                 } else {
-                                    //print!("-Slow-");
+                                    print!("-Slow-");
                                 }
                             }                            
                         },
