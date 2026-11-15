@@ -18,6 +18,7 @@ pub fn print_frames(device: &mut RadarDevice, min_velocity: f32) -> io::Result<(
                 while let Some(packet) = decoder.next_packet() {
                     match parse_frame(&packet) {
                         Some(frame) => {
+                            println!("{frame:?}");
                             let points = frame.points;
 
                             if points.is_empty(){
@@ -25,9 +26,9 @@ pub fn print_frames(device: &mut RadarDevice, min_velocity: f32) -> io::Result<(
                             }
                             for point in &points{
                                 if point.radial_velocity > min_velocity{
-                                    println!("\n{point:?}\n");
+                                    //println!("\n{point:?}\n");
                                 } else {
-                                    print!("-Slow-");
+                                    //print!("-Slow-");
                                 }
                             }                            
                         },
