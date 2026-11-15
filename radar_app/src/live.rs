@@ -157,6 +157,7 @@ pub fn run(device: &mut RadarDevice, listener: TcpListener) -> io::Result<()> {
                         elevation_deg: 30.0,
                         spin_rpm: 0.0,
                     };
+                    println!("{shot:?}");
                     game.queue(json!({
                         "type": "shot",
                         "arm_id": arm_id,
