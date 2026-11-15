@@ -19,7 +19,8 @@ struct Client {
 }
 fn cal_direction(x: f32, y: f32) -> f32 {
     println!("x={} y={}", x,y);
-    let angle = (y - 0.0).atan2(x - 0.0).to_degrees();
+    let angle = (x/y).atan().to_degrees(); 
+    //let angle = (y - 0.0).atan2(x - 0.0).to_degrees();
     angle
 }
 
