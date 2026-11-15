@@ -1,5 +1,3 @@
-//! Retained configuration type; no detection algorithm is implemented.
-
 #[derive(Debug, Clone)]
 pub struct DetectionConfig {
     pub min_distance_m: f32,

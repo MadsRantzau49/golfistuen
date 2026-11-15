@@ -1,5 +1,3 @@
-//! Shot payload shared with the game; no shot estimator is implemented.
-
 use serde::Serialize;
 
 #[derive(Debug, Clone, Serialize)]

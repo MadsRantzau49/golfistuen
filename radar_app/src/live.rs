@@ -150,11 +150,11 @@ pub fn run(device: &mut RadarDevice, listener: TcpListener) -> io::Result<()> {
                     let Some(arm_id) = game.arm.take() else {
                         break;
                     };
-                    let shot = ShotOutput {
+                    let shot: ShotOutput = ShotOutput {
                         shot_id: format!("live-{arm_id}"),
                         speed_mps: point.radial_velocity,
                         direction_deg: 0.0,
-                        elevation_deg: 22.0,
+                        elevation_deg: 30.0,
                         spin_rpm: 0.0,
                     };
                     game.queue(json!({
